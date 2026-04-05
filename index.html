@@ -73,22 +73,38 @@
 
         #powerups {
             position: absolute; top: 80px; right: 20px; z-index: 10;
-            display: flex; flex-direction: column; gap: 10px;
+            display: flex; flex-direction: column; gap: 8px;
         }
-        .powerup-icon {
-            width: 50px; height: 50px; border-radius: 8px;
-            background: rgba(255,255,255,0.1); border: 2px solid;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 24px; backdrop-filter: blur(5px);
+        .powerup-slot {
+            width: 60px; border-radius: 8px;
+            background: rgba(0,0,0,0.6); border: 2px solid;
+            backdrop-filter: blur(5px);
             animation: pulse 1s infinite;
+            overflow: hidden;
         }
-        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+        .powerup-slot-inner {
+            display: flex; align-items: center; justify-content: center;
+            height: 44px; font-size: 24px;
+        }
+        .timer-track {
+            height: 5px; background: rgba(255,255,255,0.1);
+            margin: 0 4px 4px;
+        }
+        .timer-fill {
+            height: 100%; width: 100%;
+            transition: width 0.1s linear;
+            border-radius: 2px;
+        }
+        .boost-fill  { background: linear-gradient(90deg, #ffaa00, #ffff00); }
+        .slow-fill   { background: linear-gradient(90deg, #00cc44, #00ffaa); }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
         #menu {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(10,10,25,0.95); padding: 40px 60px; border-radius: 12px;
+            background: rgba(10,10,25,0.95); padding: 32px 48px; border-radius: 12px;
             text-align: center; z-index: 100; border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 0 50px rgba(0,255,255,0.2); min-width: 400px;
+            box-shadow: 0 0 50px rgba(0,255,255,0.2);
+            min-width: min(400px, 90vw); max-width: 90vw;
             backdrop-filter: blur(15px);
         }
         h1 {
@@ -128,6 +144,21 @@
         .menu-btn:hover { background: #fff; color: #000; }
 
         .hidden { display: none !important; }
+
+        #damage-flash {
+            position: fixed; inset: 0; z-index: 200;
+            pointer-events: none;
+            background: rgba(255, 0, 50, 0.55);
+            opacity: 0;
+            transition: opacity 0.15s ease-out;
+        }
+        #coin-flash {
+            position: fixed; inset: 0; z-index: 199;
+            pointer-events: none;
+            background: rgba(255, 255, 0, 0.2);
+            opacity: 0;
+            transition: opacity 0.12s ease-out;
+        }
     </style>
 </head>
 <body>
@@ -158,7 +189,22 @@
         [A/D] 移動 | [SPACE] ジャンプ | [W/CLICK] 射撃 | [ESC] ポーズ
     </div>
 
-    <div id="powerups"></div>
+    <div id="damage-flash"></div>
+    <div id="coin-flash"></div>
+
+    <div id="powerups">
+        <div id="powerup-shield" class="powerup-slot hidden" style="border-color:#00aaff;">
+            <div class="powerup-slot-inner">🛡️</div>
+        </div>
+        <div id="powerup-boost" class="powerup-slot hidden" style="border-color:#ffff00;">
+            <div class="powerup-slot-inner">⚡</div>
+            <div class="timer-track"><div id="boost-timer-bar" class="timer-fill boost-fill"></div></div>
+        </div>
+        <div id="powerup-slow" class="powerup-slot hidden" style="border-color:#00ff88;">
+            <div class="powerup-slot-inner">🕐</div>
+            <div class="timer-track"><div id="slow-timer-bar" class="timer-fill slow-fill"></div></div>
+        </div>
+    </div>
 
     <div id="combo-flash"></div>
     <div id="nearmiss-msg"></div>
@@ -168,29 +214,35 @@
             <h1>NEON RUNNER</h1>
             <p style="margin-bottom: 15px; color: #aaa;">難易度を選択</p>
             <div class="diff-container">
-                <button class="diff-btn" onclick="selectDiff('easy', this)">🟢 EASY</button>
-                <button class="diff-btn active" onclick="selectDiff('normal', this)">🔵 NORMAL</button>
-                <button class="diff-btn" onclick="selectDiff('hard', this)">🔴 HARD<br><span style="font-size:10px;">敵も攻撃！</span></button>
-                <button class="diff-btn" onclick="selectDiff('expert', this)">💀 EXPERT<br><span style="font-size:10px;">弾幕地獄</span></button>
+                <button class="diff-btn" onclick="selectDiff('easy', this)">🟢 EASY<br><span id="hs-easy" style="font-size:10px;color:#555;">BEST: 0</span></button>
+                <button class="diff-btn active" onclick="selectDiff('normal', this)">🔵 NORMAL<br><span id="hs-normal" style="font-size:10px;color:#555;">BEST: 0</span></button>
+                <button class="diff-btn" onclick="selectDiff('hard', this)">🔴 HARD<br><span style="font-size:10px;color:#888;">敵も攻撃！</span><br><span id="hs-hard" style="font-size:10px;color:#555;">BEST: 0</span></button>
+                <button class="diff-btn" onclick="selectDiff('expert', this)">💀 EXPERT<br><span style="font-size:10px;color:#888;">弾幕地獄</span><br><span id="hs-expert" style="font-size:10px;color:#555;">BEST: 0</span></button>
             </div>
             <button class="start-btn" id="btn-start">START</button>
             <p style="margin-top: 15px; font-size: 11px; color: #666;">
-                💰コイン | 🔫障害物破壊 | 連続回避でコンボ！<br>
-                Hard以上: 敵の弾幕を避けろ
+                💰コイン収集 | 🔫障害物破壊 | 連続回避でコンボ！<br>
+                Hard以上: 敵の弾幕を避けろ | ニアミスでボーナス
             </p>
         </div>
         
         <div id="pause-screen" class="hidden">
             <h1 style="font-size: 36px;">PAUSED</h1>
-            <p style="margin: 20px 0; color: #aaa;">一時停止中</p>
+            <p style="margin: 15px 0; color: #aaa;">
+                SCORE: <span id="pause-score" style="color:#00ffff;font-weight:bold;">0</span><br>
+                COMBO: <span id="pause-combo" style="color:#ffaa00;font-weight:bold;">x1</span>
+            </p>
             <button class="menu-btn" id="btn-resume">RESUME</button>
             <button class="menu-btn" id="btn-quit" style="border-color: #ff4444; color: #ff4444;">QUIT</button>
         </div>
         
         <div id="gameover-screen" class="hidden">
             <h1 style="color: #ff4444; -webkit-text-fill-color: #ff4444;">GAME OVER</h1>
-            <p style="font-size: 18px; margin: 15px 0;">
+            <p id="new-record-msg" style="color:#ffff00;font-weight:bold;font-size:16px;margin:5px 0 0;display:none;">🏆 NEW HIGH SCORE!</p>
+            <p style="font-size: 17px; margin: 15px 0; line-height: 1.7;">
                 SCORE: <span id="final-score" style="color:#fff; font-weight:bold;">0</span><br>
+                <span style="font-size:12px;color:#888;">BEST: <span id="best-score" style="color:#ffaa00;">0</span></span><br>
+                DISTANCE: <span id="final-dist" style="color:#ff00ff; font-weight:bold;">0m</span><br>
                 MAX COMBO: <span id="max-combo" style="color:#ffaa00; font-weight:bold;">0</span><br>
                 DESTROYED: <span id="destroyed-count" style="color:#ff0055; font-weight:bold;">0</span>
             </p>
@@ -202,6 +254,24 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
     if (typeof THREE === 'undefined') throw new Error("Three.js not loaded");
+
+    // ===== ハイスコア =====
+    function getHighScore(diff) {
+        return parseInt(localStorage.getItem('hs_' + diff) || '0');
+    }
+    function checkAndSaveHighScore(diff, s) {
+        if (s > getHighScore(diff)) {
+            localStorage.setItem('hs_' + diff, s);
+            return true;
+        }
+        return false;
+    }
+    function updateStartScreenHighScores() {
+        ['easy','normal','hard','expert'].forEach(d => {
+            const el = document.getElementById('hs-' + d);
+            if (el) el.textContent = 'BEST: ' + getHighScore(d).toLocaleString();
+        });
+    }
 
     let scene, camera, renderer;
     let player, gridHelper1, gridHelper2;
@@ -226,12 +296,102 @@
     const GRAVITY = 0.025, JUMP_FORCE = 0.5, PLAYER_Y = 0.5;
     const keys = { left: false, right: false };
 
+    let shakeAmount = 0;
+    const CAM_BASE_X = 0, CAM_BASE_Y = 3, CAM_BASE_Z = 7;
+
     const settings = {
         easy:   { speed: 0.18, max: 0.45, obstRate: 40,  itemRate: 100, coinRate: 70, accel: 0.0001, multiSpawn: 0.2, enemyShootInterval: 0 },
         normal: { speed: 0.28, max: 0.70, obstRate: 28,  itemRate: 180, coinRate: 100, accel: 0.0005, multiSpawn: 0.4, enemyShootInterval: 0 },
         hard:   { speed: 0.38, max: 0.95, obstRate: 18,  itemRate: 250, coinRate: 130, accel: 0.0008, multiSpawn: 0.5, enemyShootInterval: 25 },
         expert: { speed: 0.50, max: 1.4,  obstRate: 12,  itemRate: 350, coinRate: 180, accel: 0.0012, multiSpawn: 0.65, enemyShootInterval: 15 }
     };
+
+    // ===== Web Audio API サウンドシステム =====
+    let audioCtx = null;
+
+    function initAudio() {
+        if (audioCtx) return;
+        try {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch(e) { console.warn('Web Audio API unavailable'); }
+    }
+
+    function playTone(freq, dur, vol = 0.25, type = 'square', freqEnd = null) {
+        if (!audioCtx) return;
+        try {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, audioCtx.currentTime + dur);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+            osc.start(); osc.stop(audioCtx.currentTime + dur);
+        } catch(e) {}
+    }
+
+    function playNoise(dur, vol = 0.3) {
+        if (!audioCtx) return;
+        try {
+            const bufLen = Math.ceil(audioCtx.sampleRate * dur);
+            const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1);
+            const src = audioCtx.createBufferSource();
+            src.buffer = buf;
+            const gain = audioCtx.createGain();
+            src.connect(gain); gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+            src.start(); src.stop(audioCtx.currentTime + dur);
+        } catch(e) {}
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        switch (type) {
+            case 'shoot':
+                playTone(700, 0.07, 0.18, 'square', 350);
+                break;
+            case 'explode':
+                playNoise(0.22, 0.35);
+                playTone(120, 0.22, 0.25, 'sawtooth', 40);
+                break;
+            case 'coin':
+                playTone(880, 0.05, 0.2, 'sine');
+                setTimeout(() => playTone(1320, 0.1, 0.2, 'sine'), 55);
+                break;
+            case 'powerup':
+                playTone(440, 0.1, 0.25, 'sine');
+                setTimeout(() => playTone(660, 0.1, 0.25, 'sine'), 110);
+                setTimeout(() => playTone(880, 0.15, 0.25, 'sine'), 220);
+                break;
+            case 'hit':
+                playNoise(0.12, 0.45);
+                playTone(160, 0.18, 0.35, 'sawtooth', 60);
+                break;
+            case 'shield':
+                playTone(800, 0.12, 0.3, 'sine', 500);
+                break;
+            case 'jump':
+                playTone(320, 0.04, 0.12, 'square');
+                setTimeout(() => playTone(480, 0.08, 0.1, 'square'), 40);
+                break;
+            case 'nearmiss':
+                playTone(220, 0.12, 0.18, 'sawtooth');
+                break;
+            case 'gameover':
+                playTone(440, 0.2, 0.35, 'sine');
+                setTimeout(() => playTone(330, 0.2, 0.35, 'sine'), 220);
+                setTimeout(() => playTone(220, 0.25, 0.35, 'sine'), 440);
+                setTimeout(() => playTone(110, 0.5,  0.35, 'sine'), 700);
+                break;
+            case 'intercept':
+                playTone(1000, 0.08, 0.2, 'sine', 600);
+                break;
+        }
+    }
 
     function init() {
         scene = new THREE.Scene();
@@ -262,6 +422,7 @@
         document.addEventListener('keyup', onKeyUp);
         document.addEventListener('click', onMouseClick);
         window.addEventListener('resize', onResize);
+        initTouchControls();
         
         document.getElementById('btn-start').addEventListener('click', startGame);
         document.getElementById('btn-retry').addEventListener('click', startGame);
@@ -270,6 +431,7 @@
         document.getElementById('btn-home').addEventListener('click', quitToHome);
 
         animate();
+        updateStartScreenHighScores();
     }
 
     function createEnvironment() {
@@ -323,10 +485,15 @@
     };
 
     function startGame() {
+        initAudio();
         hideAllScreens();
-        document.getElementById('controls-hint').classList.remove('hidden');
+        const hint = document.getElementById('controls-hint');
+        hint.classList.remove('hidden');
+        hint.innerHTML = ('ontouchstart' in window)
+            ? '↔ スワイプ: 移動 | ↑ スワイプ: ジャンプ | タップ: 射撃 | [ESC] ポーズ'
+            : '[A/D] 移動 | [SPACE] ジャンプ | [W/クリック] 射撃 | [ESC] ポーズ';
         document.getElementById('cooldown-container').classList.remove('hidden');
-        
+
         isGameRunning = true; isPaused = false;
         score = 0; distance = 0; combo = 1; maxCombo = 1; consecutiveAvoid = 0;
         destroyedCount = 0;
@@ -355,6 +522,8 @@
 
     function pauseGame() {
         isPaused = true; isGameRunning = false;
+        document.getElementById('pause-score').innerText = score.toLocaleString();
+        document.getElementById('pause-combo').innerText = 'x' + combo;
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('pause-screen').classList.remove('hidden');
     }
@@ -398,15 +567,31 @@
         const usedLanes = [];
 
         for (let n = 0; n < numObstacles; n++) {
-            const type = Math.random();
-            let w, h;
-            if (type < 0.4) { w=0.8; h=0.8; }
-            else if (type < 0.7) { w=0.6; h=1.6; }
-            else { w=1.5; h=0.6; }
-
-            const geo = new THREE.BoxGeometry(w,h,w);
+            const typeRoll = Math.random();
+            let w, h, geo;
+            if (typeRoll < 0.3) {
+                w=0.8; h=0.8;
+                geo = new THREE.BoxGeometry(w, h, w);
+            } else if (typeRoll < 0.55) {
+                w=0.6; h=1.6;
+                geo = new THREE.BoxGeometry(w, h, w);
+            } else if (typeRoll < 0.72) {
+                w=1.5; h=0.6;
+                geo = new THREE.BoxGeometry(w, h, w);
+            } else {
+                // 新タイプ：八面体（より速く回転し、視覚的に目立つ）
+                w=0.85; h=0.85;
+                geo = new THREE.OctahedronGeometry(0.65);
+            }
             const canShoot = (cfg.enemyShootInterval > 0) && (Math.random() > 0.3);
-            const color = canShoot ? 0xff0055 : 0xffaa00;
+            // 障害物の色を多様化: 撃てる=ピンク, ノーマル=オレンジ/シアン/紫からランダム
+            let color;
+            if (canShoot) {
+                color = 0xff0055;
+            } else {
+                const colors = [0xffaa00, 0x00ffcc, 0xaa44ff, 0xff6600];
+                color = colors[Math.floor(Math.random() * colors.length)];
+            }
             const mat = new THREE.MeshStandardMaterial({ color: 0x111, emissive: color, emissiveIntensity: 0.8 });
             const obs = new THREE.Mesh(geo, mat);
             
@@ -424,13 +609,14 @@
             }
             
             obs.position.set(lane, h/2, -50);
-            obs.userData = { 
-                width: w, 
-                height: h, 
-                passed: false, 
-                canShoot: canShoot, 
+            obs.userData = {
+                width: w,
+                height: h,
+                passed: false,
+                canShoot: canShoot,
                 shootTimer: 0,
-                hasShot: false
+                hasShot: false,
+                isOctahedron: typeRoll >= 0.72
             };
             obs.castShadow = true;
             scene.add(obs);
@@ -488,6 +674,7 @@
         scene.add(bullet);
         bullets.push(bullet);
 
+        playSound('shoot');
         canShoot = false;
         shootCooldown = SHOOT_COOLDOWN_MAX;
     }
@@ -557,13 +744,15 @@
                 if (dx < (0.2 + w) && dy < (0.2 + h) && dz < 0.5) {
                     hit = true;
                     createExplosion(obs.position);
+                    playSound('explode');
+                    triggerShake(0.12);
                     scene.remove(obs);
                     obstacles.splice(j, 1);
-                    
+
                     const destroyScore = 300 * combo;
                     score += destroyScore;
                     destroyedCount++;
-                    showMessage(`+${destroyScore} DESTROY!`, 800);
+                    showMessage(`+${destroyScore.toLocaleString()} DESTROY!`, 800);
                     break;
                 }
             }
@@ -578,6 +767,7 @@
                         enemyBullets.splice(j, 1);
                         createExplosion(bullet.position);
                         score += 50;
+                        playSound('intercept');
                         showMessage("+50 INTERCEPT!", 600);
                         break;
                     }
@@ -603,14 +793,17 @@
                     updatePowerupUI();
                     scene.remove(bullet);
                     enemyBullets.splice(i, 1);
+                    combo = 1; consecutiveAvoid = 0; updateHUD();
+                    playSound('shield'); triggerShake(0.2); triggerDamageFlash();
                     showMessage("🛡️ SHIELD!", 800);
                 } else {
+                    playSound('hit'); triggerShake(0.6); triggerDamageFlash();
                     gameOver();
                     return;
                 }
             }
 
-            if (bullet.position.z > 10 || bullet.position.z < -10) {
+            if (bullet.position.z > 10 || bullet.position.z < -65) {
                 scene.remove(bullet);
                 enemyBullets.splice(i, 1);
             }
@@ -705,6 +898,7 @@
             const obs = obstacles[i];
             obs.position.z += effectiveSpeed;
             obs.rotation.y += 0.02;
+            obs.rotation.x += obs.userData.isOctahedron ? 0.025 : 0;
 
             if (obs.userData.canShoot && cfg.enemyShootInterval > 0) {
                 obs.userData.shootTimer++;
@@ -729,26 +923,32 @@
                     updatePowerupUI();
                     scene.remove(obs);
                     obstacles.splice(i, 1);
+                    combo = 1; consecutiveAvoid = 0; updateHUD();
+                    playSound('shield'); triggerShake(0.25); triggerDamageFlash();
                     showMessage("🛡️ SHIELD SAVED!", 1000);
                 } else {
+                    playSound('hit'); triggerShake(0.6); triggerDamageFlash();
                     gameOver();
                     return;
                 }
             }
 
-            if (!obs.userData.passed && obs.position.z > player.position.z && dz < 1.5 && dx < 1.2) {
+            if (!obs.userData.passed && obs.position.z > player.position.z && dz < 1.5 && dx < (w + 1.5)) {
                 obs.userData.passed = true;
                 consecutiveAvoid++;
-                
+
                 if (consecutiveAvoid % 3 === 0) {
                     combo = Math.min(10, combo + 1);
                     if (combo > maxCombo) maxCombo = combo;
                     showCombo();
                 }
 
-                if (dx < 0.8) {
+                // near-miss: just outside collision zone (at least 0.2 beyond hit radius)
+                const nearMissDist = Math.max(0.9, 0.3 + w * 0.8 + 0.25);
+                if (dx < nearMissDist) {
                     const bonus = 50 * combo;
                     score += bonus;
+                    playSound('nearmiss');
                     showNearMiss(bonus);
                 }
             }
@@ -756,8 +956,7 @@
             if (obs.position.z > 6) {
                 scene.remove(obs);
                 obstacles.splice(i, 1);
-                const baseScore = 100;
-                const finalScore = baseScore * combo * (activeBoost ? 2 : 1);
+                const finalScore = 100 * combo * (activeBoost ? 2 : 1);
                 score += finalScore;
             }
         }
@@ -772,10 +971,13 @@
             const dz = Math.abs(player.position.z - coin.position.z);
 
             if (dx < 0.6 && dy < 0.8 && dz < 0.6) {
+                createCoinEffect(coin.position);
+                triggerCoinFlash();
+                playSound('coin');
                 scene.remove(coin);
                 coins.splice(i, 1);
                 score += 200 * combo;
-                showMessage("+200", 800);
+                showMessage("+" + (200 * combo).toLocaleString(), 800);
             } else if (coin.position.z > 6) {
                 scene.remove(coin);
                 coins.splice(i, 1);
@@ -822,6 +1024,7 @@
             slowTimer--;
             if (slowTimer <= 0) { activeSlow = false; updatePowerupUI(); }
         }
+        updatePowerupTimers();
 
         if (gameSpeed < cfg.max) gameSpeed += cfg.accel;
 
@@ -838,6 +1041,7 @@
     }
 
     function activatePowerup(type) {
+        playSound('powerup');
         if (type === 'shield') {
             activeShield = true;
             showMessage("🛡️ SHIELD!", 1500);
@@ -854,28 +1058,17 @@
     }
 
     function updatePowerupUI() {
-        const container = document.getElementById('powerups');
-        container.innerHTML = '';
-        if (activeShield) {
-            const div = document.createElement('div');
-            div.className = 'powerup-icon';
-            div.style.borderColor = '#00aaff';
-            div.innerHTML = '🛡️';
-            container.appendChild(div);
-        }
+        document.getElementById('powerup-shield').classList.toggle('hidden', !activeShield);
+        document.getElementById('powerup-boost').classList.toggle('hidden', !activeBoost);
+        document.getElementById('powerup-slow').classList.toggle('hidden', !activeSlow);
+    }
+
+    function updatePowerupTimers() {
         if (activeBoost) {
-            const div = document.createElement('div');
-            div.className = 'powerup-icon';
-            div.style.borderColor = '#ffff00';
-            div.innerHTML = '⚡';
-            container.appendChild(div);
+            document.getElementById('boost-timer-bar').style.width = (boostTimer / 300 * 100) + '%';
         }
         if (activeSlow) {
-            const div = document.createElement('div');
-            div.className = 'powerup-icon';
-            div.style.borderColor = '#00ff00';
-            div.innerHTML = '🕐';
-            container.appendChild(div);
+            document.getElementById('slow-timer-bar').style.width = (slowTimer / 300 * 100) + '%';
         }
     }
 
@@ -886,8 +1079,8 @@
     }
 
     function updateHUD() {
-        document.getElementById('score-val').innerText = score;
-        document.getElementById('dist-val').innerText = Math.floor(distance) + "m";
+        document.getElementById('score-val').innerText = score.toLocaleString();
+        document.getElementById('dist-val').innerText = Math.floor(distance).toLocaleString() + "m";
         document.getElementById('combo-val').innerText = "x" + combo;
     }
 
@@ -912,15 +1105,55 @@
         setTimeout(() => { el.style.opacity = 0; }, duration);
     }
 
+    function triggerShake(amount) {
+        shakeAmount = Math.max(shakeAmount, amount);
+    }
+
+    function triggerDamageFlash() {
+        const el = document.getElementById('damage-flash');
+        el.style.opacity = '1';
+        setTimeout(() => { el.style.opacity = '0'; }, 180);
+    }
+
+    function triggerCoinFlash() {
+        const el = document.getElementById('coin-flash');
+        el.style.opacity = '1';
+        setTimeout(() => { el.style.opacity = '0'; }, 140);
+    }
+
+    function createCoinEffect(position) {
+        for (let i = 0; i < 10; i++) {
+            const geo = new THREE.SphereGeometry(0.07, 6, 6);
+            const mat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const p = new THREE.Mesh(geo, mat);
+            p.position.copy(position);
+            p.userData = {
+                vx: (Math.random() - 0.5) * 0.25,
+                vy: 0.05 + Math.random() * 0.2,
+                vz: (Math.random() - 0.5) * 0.25,
+                life: 28, isCoin: true
+            };
+            scene.add(p); particles.push(p);
+        }
+    }
+
     function gameOver() {
+        playSound('gameover');
         isGameRunning = false;
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('gameover-screen').classList.remove('hidden');
         document.getElementById('controls-hint').classList.add('hidden');
         document.getElementById('cooldown-container').classList.add('hidden');
-        document.getElementById('final-score').innerText = score;
+        document.getElementById('final-score').innerText = score.toLocaleString();
+        document.getElementById('final-dist').innerText = Math.floor(distance).toLocaleString() + "m";
         document.getElementById('max-combo').innerText = "x" + maxCombo;
         document.getElementById('destroyed-count').innerText = destroyedCount;
+
+        const isNewRecord = checkAndSaveHighScore(difficulty, score);
+        document.getElementById('best-score').innerText = getHighScore(difficulty).toLocaleString();
+        const recMsg = document.getElementById('new-record-msg');
+        recMsg.style.display = isNewRecord ? 'block' : 'none';
+        updateStartScreenHighScores();
     }
 
     function onKeyDown(e) {
@@ -936,6 +1169,7 @@
             if (!isJumping && isGameRunning) {
                 velocityY = JUMP_FORCE;
                 isJumping = true;
+                playSound('jump');
             }
             if (!isGameRunning && !document.getElementById('gameover-screen').classList.contains('hidden')) {
                 startGame();
@@ -952,6 +1186,42 @@
         if (isGameRunning) shoot();
     }
 
+    function initTouchControls() {
+        let touchStartX = 0, touchStartY = 0;
+
+        document.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            initAudio(); // ブラウザ制限対策：ユーザーインタラクションでAudioContext初期化
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isGameRunning) return;
+            const dx = e.touches[0].clientX - touchStartX;
+            const dy = e.touches[0].clientY - touchStartY;
+
+            keys.left  = dx < -25;
+            keys.right = dx > 25;
+
+            if (dy < -55 && !isJumping && isGameRunning) {
+                velocityY = JUMP_FORCE;
+                isJumping = true;
+                playSound('jump');
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('touchend', (e) => {
+            const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
+            const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+            keys.left = false;
+            keys.right = false;
+            // タップ（ほぼ移動なし）で射撃
+            if (dx < 20 && dy < 20 && isGameRunning) shoot();
+        }, { passive: true });
+    }
+
     function onResize() {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
@@ -961,6 +1231,19 @@
     function animate() {
         requestAnimationFrame(animate);
         update();
+
+        // スクリーンシェイク
+        if (shakeAmount > 0.005) {
+            const t = Date.now() * 0.05;
+            camera.position.x = CAM_BASE_X + Math.sin(t * 1.7) * shakeAmount;
+            camera.position.y = CAM_BASE_Y + Math.cos(t * 2.3) * shakeAmount;
+            shakeAmount *= 0.82;
+        } else {
+            camera.position.x = CAM_BASE_X;
+            camera.position.y = CAM_BASE_Y;
+            shakeAmount = 0;
+        }
+
         renderer.render(scene, camera);
     }
 
