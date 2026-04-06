@@ -1378,38 +1378,52 @@
     }
 
     function initTouchControls() {
-        let touchStartX = 0, touchStartY = 0;
+        let startX = 0, startY = 0; // タップ判定用（start固定）
+        let lastY = 0;              // ジャンプ判定用（前フレームのY）
+        let jumpLocked = false;     // 同一スワイプ内での2重ジャンプ防止
 
         document.addEventListener('touchstart', (e) => {
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-            initAudio(); // ブラウザ制限対策：ユーザーインタラクションでAudioContext初期化
+            startX = e.touches[0].clientX;
+            startY = lastY = e.touches[0].clientY;
+            jumpLocked = false;
+            initAudio();
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
         }, { passive: true });
 
         document.addEventListener('touchmove', (e) => {
             if (!isGameRunning) return;
-            const dx = e.touches[0].clientX - touchStartX;
-            const dy = e.touches[0].clientY - touchStartY;
+            const x = e.touches[0].clientX;
+            const y = e.touches[0].clientY;
 
-            keys.left  = dx < -25;
-            keys.right = dx > 25;
+            // 左右移動：タッチ開始位置からの総変位で判定（持続的に押しやすい）
+            const totalDx = x - startX;
+            keys.left  = totalDx < -30;
+            keys.right = totalDx > 30;
 
-            if (dy < -55 && !isJumping && isGameRunning) {
+            // ジャンプ：「前フレームから上に急に動いた」フリック検出
+            // - lastY との差(frameDy)を使うことで、上下往復しても多重発火しない
+            const frameDy = y - lastY;
+            if (frameDy < -18 && !isJumping && !jumpLocked && isGameRunning) {
                 velocityY = JUMP_FORCE;
                 isJumping = true;
+                jumpLocked = true; // 指が下に戻るまでロック
                 playSound('jump');
             }
+            // 指が下方向に動いたらロック解除（次の上フリックでジャンプ可能）
+            if (frameDy > 12) jumpLocked = false;
+
+            lastY = y;
             e.preventDefault();
         }, { passive: false });
 
         document.addEventListener('touchend', (e) => {
-            const dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-            const dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
             keys.left = false;
             keys.right = false;
-            // タップ（ほぼ移動なし）で射撃
-            if (dx < 20 && dy < 20 && isGameRunning) shoot();
+            jumpLocked = false;
+            // タップ（起点からの総移動量が小さい）で射撃
+            const totalDx = Math.abs(e.changedTouches[0].clientX - startX);
+            const totalDy = Math.abs(e.changedTouches[0].clientY - startY);
+            if (totalDx < 20 && totalDy < 20 && isGameRunning) shoot();
         }, { passive: true });
     }
 
