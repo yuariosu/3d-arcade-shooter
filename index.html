@@ -159,23 +159,55 @@
             opacity: 0;
             transition: opacity 0.12s ease-out;
         }
+
+        /* コンステレーションHUD */
+        #constellation-hud {
+            position: absolute; bottom: 60px; right: 20px; z-index: 10;
+            background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15);
+            padding: 8px 14px; border-radius: 6px; backdrop-filter: blur(8px);
+            pointer-events: none; text-align: right;
+            transition: border-color 0.6s, box-shadow 0.6s;
+        }
+        #constellation-hud.hidden { display: none !important; }
+        #const-label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        #const-stage-name { font-size: 13px; font-weight: bold; color: #888; }
+        #const-count { font-size: 20px; font-weight: 900; color: #aa66ff; }
+        /* 段階ごとの発光色 */
+        #constellation-hud.stage-1 { border-color: #aa66ff; box-shadow: 0 0 8px rgba(170,102,255,0.3); }
+        #constellation-hud.stage-2 { border-color: #00ffcc; box-shadow: 0 0 12px rgba(0,255,204,0.4); }
+        #constellation-hud.stage-3 { border-color: #ffaa00; box-shadow: 0 0 16px rgba(255,170,0,0.5); }
+        #constellation-hud.stage-4 { border-color: #ff3366; box-shadow: 0 0 24px rgba(255,51,102,0.7); animation: singularity-pulse 0.8s infinite; }
+        @keyframes singularity-pulse { 0%,100%{box-shadow:0 0 20px rgba(255,51,102,0.7)} 50%{box-shadow:0 0 40px rgba(255,51,102,1)} }
+
+        /* ゲームタイトルのグラデーションを宇宙色へ */
+        .singularity-title {
+            background: linear-gradient(to right, #aa44ff, #ff0088) !important;
+            -webkit-background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+        }
     </style>
 </head>
 <body>
 
     <div id="hud">
         <div class="stat">
-            <div class="stat-label">Score</div>
+            <div class="stat-label">ENERGY</div>
             <div class="stat-value" id="score-val">0</div>
         </div>
         <div class="stat">
-            <div class="stat-label">Distance</div>
+            <div class="stat-label">ABSORBED</div>
             <div class="stat-value" id="dist-val">0m</div>
         </div>
         <div class="stat">
-            <div class="stat-label">Combo</div>
+            <div class="stat-label">RESONANCE</div>
             <div class="stat-value" id="combo-val">x1</div>
         </div>
+    </div>
+
+    <div id="constellation-hud" class="hidden">
+        <div id="const-label">CONSTELLATION</div>
+        <div id="const-count">0</div>
+        <div id="const-stage-name">—</div>
     </div>
 
     <div id="cooldown-container" class="hidden">
@@ -211,8 +243,9 @@
 
     <div id="menu">
         <div id="start-screen">
-            <h1>NEON RUNNER</h1>
-            <p style="margin-bottom: 15px; color: #aaa;">難易度を選択</p>
+            <h1 class="singularity-title">SINGULARITY ENGINE</h1>
+            <p style="margin-bottom: 5px; color: #aa66ff; font-size: 13px; letter-spacing: 2px;">— 宇宙はあなたに向かって崩壊する —</p>
+            <p style="margin-bottom: 12px; color: #555; font-size: 11px;">破壊した全ては あなたの軌道になる</p>
             <div class="diff-container">
                 <button class="diff-btn" onclick="selectDiff('easy', this)">🟢 EASY<br><span id="hs-easy" style="font-size:10px;color:#555;">BEST: 0</span></button>
                 <button class="diff-btn active" onclick="selectDiff('normal', this)">🔵 NORMAL<br><span id="hs-normal" style="font-size:10px;color:#555;">BEST: 0</span></button>
@@ -229,24 +262,26 @@
         <div id="pause-screen" class="hidden">
             <h1 style="font-size: 36px;">PAUSED</h1>
             <p style="margin: 15px 0; color: #aaa;">
-                SCORE: <span id="pause-score" style="color:#00ffff;font-weight:bold;">0</span><br>
-                COMBO: <span id="pause-combo" style="color:#ffaa00;font-weight:bold;">x1</span>
+                ENERGY: <span id="pause-score" style="color:#00ffff;font-weight:bold;">0</span><br>
+                RESONANCE: <span id="pause-combo" style="color:#ffaa00;font-weight:bold;">x1</span><br>
+                DEBRIS: <span id="pause-debris" style="color:#aa66ff;font-weight:bold;">0</span>
             </p>
             <button class="menu-btn" id="btn-resume">RESUME</button>
             <button class="menu-btn" id="btn-quit" style="border-color: #ff4444; color: #ff4444;">QUIT</button>
         </div>
         
         <div id="gameover-screen" class="hidden">
-            <h1 style="color: #ff4444; -webkit-text-fill-color: #ff4444;">GAME OVER</h1>
+            <h1 style="-webkit-text-fill-color:unset;background:linear-gradient(to right,#ff4444,#aa00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:32px;">SINGULARITY<br>INTERRUPTED</h1>
             <p id="new-record-msg" style="color:#ffff00;font-weight:bold;font-size:16px;margin:5px 0 0;display:none;">🏆 NEW HIGH SCORE!</p>
-            <p style="font-size: 17px; margin: 15px 0; line-height: 1.7;">
-                SCORE: <span id="final-score" style="color:#fff; font-weight:bold;">0</span><br>
-                <span style="font-size:12px;color:#888;">BEST: <span id="best-score" style="color:#ffaa00;">0</span></span><br>
-                DISTANCE: <span id="final-dist" style="color:#ff00ff; font-weight:bold;">0m</span><br>
-                MAX COMBO: <span id="max-combo" style="color:#ffaa00; font-weight:bold;">0</span><br>
-                DESTROYED: <span id="destroyed-count" style="color:#ff0055; font-weight:bold;">0</span>
+            <p style="font-size: 16px; margin: 14px 0; line-height: 1.8;">
+                ENERGY: <span id="final-score" style="color:#00ffff; font-weight:bold;">0</span><br>
+                <span style="font-size:11px;color:#888;">BEST: <span id="best-score" style="color:#ffaa00;">0</span></span><br>
+                ABSORBED: <span id="final-dist" style="color:#ff00ff; font-weight:bold;">0m</span><br>
+                MAX RESONANCE: <span id="max-combo" style="color:#ffaa00; font-weight:bold;">0</span><br>
+                DESTROYED: <span id="destroyed-count" style="color:#ff0055; font-weight:bold;">0</span><br>
+                DEBRIS AT END: <span id="final-debris" style="color:#aa66ff; font-weight:bold;">0</span>
             </p>
-            <button class="start-btn" id="btn-retry" style="background: linear-gradient(90deg, #ff4444, #ff0055);">RETRY</button>
+            <button class="start-btn" id="btn-retry" style="background: linear-gradient(90deg, #aa00ff, #ff0055);">RETRY</button>
             <button class="menu-btn" id="btn-home">HOME</button>
         </div>
     </div>
@@ -256,12 +291,13 @@
     if (typeof THREE === 'undefined') throw new Error("Three.js not loaded");
 
     // ===== 共有オブジェクト（毎フレーム生成を避けてパフォーマンス最適化） =====
-    // 敵弾：Geometry/Materialを1インスタンスで全弾共有
-    const ENEMY_BULLET_GEO = new THREE.SphereGeometry(0.15, 6, 6); // セグメント削減（12→6）
-    const ENEMY_BULLET_MAT = new THREE.MeshBasicMaterial({ color: 0xff00aa }); // PointLight不要の軽量Material
-    // プレイヤー弾：Geometryを共有（Materialも共有可能）
+    const ENEMY_BULLET_GEO = new THREE.SphereGeometry(0.15, 6, 6);
+    const ENEMY_BULLET_MAT = new THREE.MeshBasicMaterial({ color: 0xff00aa });
     const PLAYER_BULLET_GEO = new THREE.SphereGeometry(0.18, 7, 7);
     const PLAYER_BULLET_MAT = new THREE.MeshBasicMaterial({ color: 0xff3366 });
+    // デブリ：低ポリ二十面体（全デブリで形状を共有、色だけ変える）
+    const DEBRIS_GEO = new THREE.IcosahedronGeometry(0.13, 0);
+    const DEBRIS_COLORS = [0xff6600, 0xffaa00, 0xff3366, 0xaa44ff, 0x00ffcc, 0xffffff, 0x8844ff, 0xff0088];
 
     // ===== ハイスコア =====
     function getHighScore(diff) {
@@ -306,6 +342,12 @@
 
     let shakeAmount = 0;
     const CAM_BASE_X = 0, CAM_BASE_Y = 3, CAM_BASE_Z = 7;
+
+    // ===== Debris Constellation =====
+    let debris = [];
+    const MAX_DEBRIS = 30;
+    let constellationStage = 0, prevConstellationStage = -1;
+    let singularityTimer = 0;
 
     const settings = {
         easy:   { speed: 0.18, max: 0.45, obstRate: 40, itemRate: 100, coinRate: 70,  accel: 0.0001, multiSpawn: 0.20, enemyShootInterval: 0,  maxEnemyBullets: 0,  shootChance: 0.0  },
@@ -522,16 +564,24 @@
         bullets.forEach(b => scene.remove(b));
         enemyBullets.forEach(b => scene.remove(b));
         particles.forEach(p => scene.remove(p));
-        obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = [];
+        debris.forEach(d => scene.remove(d.mesh));
+        obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = []; debris = [];
+        constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
+
+        // 宇宙の雰囲気をリセット
+        scene.background.setHex(0x050505);
+        if (scene.fog) scene.fog.color.setHex(0x050505);
 
         updateHUD();
         updatePowerupUI();
+        updateConstellationHUD();
     }
 
     function pauseGame() {
         isPaused = true; isGameRunning = false;
         document.getElementById('pause-score').innerText = score.toLocaleString();
         document.getElementById('pause-combo').innerText = 'x' + combo;
+        document.getElementById('pause-debris').innerText = debris.length;
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('pause-screen').classList.remove('hidden');
     }
@@ -555,7 +605,11 @@
         bullets.forEach(b => scene.remove(b));
         enemyBullets.forEach(b => scene.remove(b));
         particles.forEach(p => scene.remove(p));
-        obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = [];
+        debris.forEach(d => scene.remove(d.mesh));
+        obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = []; debris = [];
+        constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
+        scene.background.setHex(0x050505);
+        if (scene.fog) scene.fog.color.setHex(0x050505);
     }
 
     function hideAllScreens() {
@@ -724,12 +778,14 @@
                 if (dx < (0.2 + w) && dy < (0.2 + h) && dz < 0.5) {
                     hit = true;
                     createExplosion(obs.position);
+                    spawnDebris(obs.position);       // 破壊 → 破片が軌道に乗る
                     playSound('explode');
                     triggerShake(0.12);
                     scene.remove(obs);
                     obstacles.splice(j, 1);
 
-                    const destroyScore = 300 * combo;
+                    const constellationBonus = constellationStage >= 3 ? 1.5 : 1;
+                    const destroyScore = Math.floor(300 * combo * constellationBonus);
                     score += destroyScore;
                     destroyedCount++;
                     showMessage(`+${destroyScore.toLocaleString()} DESTROY!`, 800);
@@ -766,6 +822,24 @@
             bullet.position.y += bullet.userData.vy;
             bullet.position.z += bullet.userData.vz;
 
+            // Stage 2+: 軌道デブリが敵弾を偏向・吸収する
+            if (constellationStage >= 2) {
+                let deflected = false;
+                for (let j = debris.length - 1; j >= 0; j--) {
+                    if (bullet.position.distanceTo(debris[j].mesh.position) < 0.38) {
+                        createExplosion(bullet.position);
+                        playSound('intercept');
+                        scene.remove(bullet); enemyBullets.splice(i, 1);
+                        scene.remove(debris[j].mesh); debris.splice(j, 1);
+                        score += 250;
+                        showMessage('⚡ ORBITAL DEFLECT  +250', 700);
+                        deflected = true;
+                        break;
+                    }
+                }
+                if (deflected) continue;
+            }
+
             const dist = bullet.position.distanceTo(player.position);
             if (dist < 0.4) {
                 if (activeShield) {
@@ -796,17 +870,131 @@
             const mat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xff0055 : 0xffaa00 });
             const particle = new THREE.Mesh(geo, mat);
             particle.position.copy(position);
-            
             particle.userData = {
                 vx: (Math.random() - 0.5) * 0.3,
                 vy: (Math.random() - 0.5) * 0.3,
                 vz: (Math.random() - 0.5) * 0.3,
                 life: 30
             };
-            
             scene.add(particle);
             particles.push(particle);
         }
+    }
+
+    // ===== Debris Constellation System =====
+
+    // 破壊した障害物の破片をプレイヤーの周りに3D軌道で周回させる
+    function spawnDebris(position) {
+        if (debris.length >= MAX_DEBRIS) return;
+        const count = Math.min(3, MAX_DEBRIS - debris.length);
+        for (let i = 0; i < count; i++) {
+            const color = DEBRIS_COLORS[Math.floor(Math.random() * DEBRIS_COLORS.length)];
+            const mesh = new THREE.Mesh(DEBRIS_GEO, new THREE.MeshBasicMaterial({ color }));
+            mesh.position.copy(position);
+
+            // ランダムな軌道面を2つの直交基底ベクトル(u, v)で定義
+            // yaw = 軌道面のY軸回転、pitch = 傾き
+            const yaw   = Math.random() * Math.PI * 2;
+            const pitch = (Math.random() - 0.5) * Math.PI;
+            const cy = Math.cos(yaw), sy = Math.sin(yaw);
+            const cp = Math.cos(pitch), sp = Math.sin(pitch);
+            // u: 軌道の「右」方向  v: 軌道の「上」方向
+            const d = {
+                mesh,
+                r:     1.0 + Math.min(debris.length, 20) * 0.06 + Math.random() * 0.25,
+                angle: Math.random() * Math.PI * 2,
+                speed: 0.022 + Math.random() * 0.018,
+                ux: cy,      uy: 0,   uz: sy,
+                vx: -sy * sp, vy: cp, vz: cy * sp,
+                life: 520 + Math.floor(Math.random() * 200)
+            };
+            scene.add(mesh);
+            debris.push(d);
+        }
+    }
+
+    function updateDebris() {
+        for (let i = debris.length - 1; i >= 0; i--) {
+            const d = debris[i];
+            d.angle += d.speed;
+            const cosA = Math.cos(d.angle) * d.r;
+            const sinA = Math.sin(d.angle) * d.r;
+            // 3D軌道位置 = player + cosA * u + sinA * v
+            d.mesh.position.set(
+                player.position.x + cosA * d.ux + sinA * d.vx,
+                player.position.y + cosA * d.uy + sinA * d.vy,
+                player.position.z + cosA * d.uz + sinA * d.vz
+            );
+            d.mesh.rotation.x += 0.09;
+            d.mesh.rotation.z += 0.07;
+            d.life--;
+            if (d.life <= 0) {
+                scene.remove(d.mesh);
+                debris.splice(i, 1);
+            }
+        }
+    }
+
+    // ===== Constellation Stage Logic =====
+
+    function getConstellationStage() {
+        const n = debris.length;
+        if (n >= 25) return 4;
+        if (n >= 15) return 3;
+        if (n >= 8)  return 2;
+        if (n >= 3)  return 1;
+        return 0;
+    }
+
+    // 段階が上がったときに1回だけメッセージ＋サウンドを出す
+    function checkConstellationStage() {
+        const stage = getConstellationStage();
+        if (stage === prevConstellationStage) return;
+        prevConstellationStage = stage;
+        constellationStage = stage;
+        const msgs = [
+            '', '🌌 ORBIT FORMING', '⚡ DEFLECTOR ACTIVE',
+            '✨ CONSTELLATION COMPLETE', '⚫ SINGULARITY FORMING...'
+        ];
+        if (stage > 0) {
+            showMessage(msgs[stage], 2200);
+            playSound('powerup');
+        }
+        updateConstellationHUD();
+    }
+
+    // Stage 4: 定期的に最近傍の障害物を引き寄せて自動爆破
+    function triggerSingularityPulse() {
+        if (constellationStage < 4) { singularityTimer = 0; return; }
+        singularityTimer++;
+        if (singularityTimer < 140) return;
+        singularityTimer = 0;
+
+        let nearest = null, nearestDist = Infinity;
+        for (const obs of obstacles) {
+            const d = obs.position.distanceTo(player.position);
+            if (d < nearestDist) { nearestDist = d; nearest = obs; }
+        }
+        if (!nearest) return;
+
+        createExplosion(nearest.position);
+        spawnDebris(nearest.position);
+        scene.remove(nearest);
+        obstacles.splice(obstacles.indexOf(nearest), 1);
+        const pulseScore = Math.floor(800 * combo);
+        score += pulseScore;
+        triggerShake(0.18);
+        playSound('explode');
+        showMessage(`⚫ SINGULARITY PULSE  +${pulseScore.toLocaleString()}`, 1100);
+    }
+
+    // デブリ数に応じて宇宙の雰囲気（背景色・霧）を動的に変化させる
+    function updateCosmicAtmosphere() {
+        const stage = constellationStage;
+        // 暗い宇宙 → 深紫 → 紫 → マゼンタ → 深紅（特異点）
+        const bgColors = [0x050505, 0x0a0520, 0x130830, 0x200535, 0x280210];
+        scene.background.setHex(bgColors[stage]);
+        if (scene.fog) scene.fog.color.setHex(bgColors[stage]);
     }
 
     function updateParticles() {
@@ -873,6 +1061,7 @@
 
         updateBullets();
         updateParticles();
+        updateDebris();
 
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const obs = obstacles[i];
@@ -1007,6 +1196,10 @@
             if (slowTimer <= 0) { activeSlow = false; updatePowerupUI(); }
         }
         updatePowerupTimers();
+        checkConstellationStage();
+        triggerSingularityPulse();
+        updateCosmicAtmosphere();
+        updateConstellationHUD();
 
         if (gameSpeed < cfg.max) gameSpeed += cfg.accel;
 
@@ -1043,6 +1236,19 @@
         document.getElementById('powerup-shield').classList.toggle('hidden', !activeShield);
         document.getElementById('powerup-boost').classList.toggle('hidden', !activeBoost);
         document.getElementById('powerup-slow').classList.toggle('hidden', !activeSlow);
+    }
+
+    const STAGE_NAMES = ['—', 'ORBIT', 'DEFLECTOR', 'CONSTELLATION', '⚫ SINGULARITY'];
+    const STAGE_CLASSES = ['', 'stage-1', 'stage-2', 'stage-3', 'stage-4'];
+
+    function updateConstellationHUD() {
+        const hud = document.getElementById('constellation-hud');
+        if (!hud) return;
+        if (!isGameRunning && !isPaused) { hud.classList.add('hidden'); return; }
+        hud.classList.remove('hidden');
+        document.getElementById('const-count').textContent = debris.length;
+        document.getElementById('const-stage-name').textContent = STAGE_NAMES[constellationStage];
+        hud.className = STAGE_CLASSES[constellationStage]; // クラスで発光色が変わる
     }
 
     function updatePowerupTimers() {
@@ -1130,6 +1336,7 @@
         document.getElementById('final-dist').innerText = Math.floor(distance).toLocaleString() + "m";
         document.getElementById('max-combo').innerText = "x" + maxCombo;
         document.getElementById('destroyed-count').innerText = destroyedCount;
+        document.getElementById('final-debris').innerText = debris.length;
 
         const isNewRecord = checkAndSaveHighScore(difficulty, score);
         document.getElementById('best-score').innerText = getHighScore(difficulty).toLocaleString();
