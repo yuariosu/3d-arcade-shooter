@@ -350,10 +350,10 @@
     let singularityTimer = 0;
 
     const settings = {
-        easy:   { speed: 0.18, max: 0.45, obstRate: 40, itemRate: 100, coinRate: 70,  accel: 0.0001, multiSpawn: 0.20, enemyShootInterval: 0,  maxEnemyBullets: 0,  shootChance: 0.0  },
-        normal: { speed: 0.28, max: 0.70, obstRate: 28, itemRate: 180, coinRate: 100, accel: 0.0005, multiSpawn: 0.40, enemyShootInterval: 0,  maxEnemyBullets: 0,  shootChance: 0.0  },
-        hard:   { speed: 0.32, max: 0.75, obstRate: 24, itemRate: 230, coinRate: 120, accel: 0.0006, multiSpawn: 0.38, enemyShootInterval: 55, maxEnemyBullets: 5,  shootChance: 0.35 },
-        expert: { speed: 0.42, max: 1.05, obstRate: 16, itemRate: 300, coinRate: 155, accel: 0.0009, multiSpawn: 0.52, enemyShootInterval: 38, maxEnemyBullets: 8,  shootChance: 0.50 }
+        easy:   { speed: 0.18, max: 0.45, obstRate: 40, itemRate: 100, coinRate: 70,  accel: 0.0001, multiSpawn: 0.20, maxMulti: 2, enemyShootInterval: 0,  maxEnemyBullets: 0, shootChance: 0.00, bulletSpeed: 0.50 },
+        normal: { speed: 0.28, max: 0.70, obstRate: 28, itemRate: 180, coinRate: 100, accel: 0.0005, multiSpawn: 0.40, maxMulti: 2, enemyShootInterval: 0,  maxEnemyBullets: 0, shootChance: 0.00, bulletSpeed: 0.50 },
+        hard:   { speed: 0.22, max: 0.52, obstRate: 32, itemRate: 220, coinRate: 115, accel: 0.0003, multiSpawn: 0.25, maxMulti: 2, enemyShootInterval: 80, maxEnemyBullets: 4, shootChance: 0.22, bulletSpeed: 0.42 },
+        expert: { speed: 0.28, max: 0.72, obstRate: 24, itemRate: 270, coinRate: 135, accel: 0.0006, multiSpawn: 0.38, maxMulti: 3, enemyShootInterval: 60, maxEnemyBullets: 6, shootChance: 0.33, bulletSpeed: 0.55 }
     };
 
     // ===== Web Audio API サウンドシステム =====
@@ -623,8 +623,10 @@
 
     function spawnObstacle() {
         const cfg = settings[difficulty];
-        const numObstacles = Math.random() < cfg.multiSpawn ? (Math.random() < 0.4 ? 3 : 2) : 1;
-        
+        // maxMultiを上限とし、かつ「5レーン中2レーン以上は必ず開ける」制約を守る
+        const rawMulti = Math.random() < cfg.multiSpawn ? (Math.random() < 0.4 ? 3 : 2) : 1;
+        const numObstacles = Math.min(rawMulti, cfg.maxMulti, 3); // 最大3、かつ最大2レーン塞ぎ
+
         const lanes = [-3, -1.5, 0, 1.5, 3];
         const usedLanes = [];
 
@@ -751,7 +753,7 @@
         }
 
         bullet.position.set(targetLane, fromPos.y, fromPos.z);
-        bullet.userData = { vx: 0, vy: 0, vz: 0.65 };
+        bullet.userData = { vx: 0, vy: 0, vz: settings[difficulty].bulletSpeed };
 
         scene.add(bullet);
         enemyBullets.push(bullet);
