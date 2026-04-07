@@ -355,6 +355,8 @@
     let scene, camera, renderer;
     let player, gridHelper1, gridHelper2;
     let obstacles = [], coins = [], powerups = [], bullets = [], enemyBullets = [], particles = [];
+    let platforms = [], bonusCoins = [];   // 空中プラットフォーム + ボーナスコイン
+    let platformSpawnTimer = 0;
     let stars, starGeo;
     let isGameRunning = false, isPaused = false;
 
@@ -607,7 +609,10 @@
         enemyBullets.forEach(b => scene.remove(b));
         particles.forEach(p => scene.remove(p));
         debris.forEach(d => scene.remove(d.mesh));
+        platforms.forEach(p => scene.remove(p));
+        bonusCoins.forEach(c => scene.remove(c));
         obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = []; debris = [];
+        platforms = []; bonusCoins = []; platformSpawnTimer = 0;
         constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
 
         // 宇宙の雰囲気をリセット
@@ -648,7 +653,10 @@
         enemyBullets.forEach(b => scene.remove(b));
         particles.forEach(p => scene.remove(p));
         debris.forEach(d => scene.remove(d.mesh));
+        platforms.forEach(p => scene.remove(p));
+        bonusCoins.forEach(c => scene.remove(c));
         obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = []; debris = [];
+        platforms = []; bonusCoins = []; platformSpawnTimer = 0;
         constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
         ridingBlock = null;
         scene.background.setHex(0x050505);
@@ -744,6 +752,63 @@
             scene.add(obs);
             obstacles.push(obs);
         }
+    }
+
+    // ===== 空中プラットフォーム（乗れる大型ブロック）=====
+    function spawnPlatform() {
+        const PW = 3.2;   // 幅（X）
+        const PH = 0.35;  // 高さ（薄いプラットフォーム）
+        const PD = 1.8;   // 奥行き（Z）
+        const elevY = 1.6 + Math.random() * 1.8;  // 地面から1.6〜3.4の高さに浮く
+
+        // プラットフォーム本体
+        const geo = new THREE.BoxGeometry(PW, PH, PD);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x0a0a1a,
+            emissive: 0x0055aa,
+            emissiveIntensity: 0.6
+        });
+        const plat = new THREE.Mesh(geo, mat);
+
+        const lanes = [-2, 0, 2];
+        const cx = lanes[Math.floor(Math.random() * lanes.length)];
+        plat.position.set(cx, elevY + PH / 2, -52);
+        plat.userData = { width: PW, height: PH, depth: PD, isPlatform: true };
+        plat.castShadow = true;
+
+        // 上面：明るい青白い光る面
+        const topGeo = new THREE.PlaneGeometry(PW - 0.1, PD - 0.1);
+        const topMat = new THREE.MeshBasicMaterial({
+            color: 0x44aaff, transparent: true, opacity: 0.6, depthWrite: false
+        });
+        const topMesh = new THREE.Mesh(topGeo, topMat);
+        topMesh.rotation.x = -Math.PI / 2;
+        topMesh.position.y = PH / 2 + 0.01;
+        plat.add(topMesh);
+
+        // 縁の光るライン（4辺）
+        const edgeGeo = new THREE.EdgesGeometry(geo);
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x44ccff, linewidth: 1 });
+        const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+        plat.add(edges);
+
+        scene.add(plat);
+        platforms.push(plat);
+
+        // プラットフォーム上にボーナスコインを3枚配置
+        const coinOffsets = [-1.0, 0, 1.0];
+        coinOffsets.forEach(offset => {
+            const cGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.12, 16);
+            const cMat = new THREE.MeshStandardMaterial({
+                color: 0x220000, emissive: 0xff2200, emissiveIntensity: 1.2
+            });
+            const bonusCoin = new THREE.Mesh(cGeo, cMat);
+            bonusCoin.rotation.x = Math.PI / 2;
+            bonusCoin.position.set(cx + offset, elevY + PH + 0.5, -52);
+            bonusCoin.userData = { type: 'bonus_coin', platRef: plat };
+            scene.add(bonusCoin);
+            bonusCoins.push(bonusCoin);
+        });
     }
 
     function spawnCoin() {
@@ -1105,7 +1170,8 @@
 
         // ridingBlock有効性チェック：ブロックが消えたか通過したら落下
         if (ridingBlock) {
-            if (!obstacles.includes(ridingBlock) || ridingBlock.position.z > player.position.z + 1.8) {
+            const stillExists = obstacles.includes(ridingBlock) || platforms.includes(ridingBlock);
+            if (!stillExists || ridingBlock.position.z > player.position.z + 1.8) {
                 ridingBlock = null;
             }
         }
@@ -1273,10 +1339,78 @@
             }
         }
 
+        // ===== 空中プラットフォーム =====
+        for (let i = platforms.length - 1; i >= 0; i--) {
+            const plat = platforms[i];
+            plat.position.z += effectiveSpeed;
+
+            const pw = plat.userData.width / 2;
+            const ph = plat.userData.height / 2;
+            const pdx = Math.abs(player.position.x - plat.position.x);
+            const pdz = Math.abs(player.position.z - plat.position.z);
+            const platTopY = plat.position.y + ph;
+            const pBottom = player.position.y - 0.4;
+            const prevPBottom = prevPlayerY - 0.4;
+
+            // 上面着地判定
+            if (plat !== ridingBlock
+                && velocityY <= 0.05
+                && prevPBottom >= platTopY - 0.4
+                && pBottom <= platTopY + 0.3
+                && pdx < pw && pdz < 1.5) {
+                ridingBlock = plat;
+                player.position.y = platTopY + 0.4;
+                velocityY = 0;
+                isJumping = false;
+                playSound('land');
+                showMessage('PLATFORM! +200', 900);
+                score += 200 * combo;
+            }
+
+            if (plat.position.z > 7) {
+                scene.remove(plat);
+                platforms.splice(i, 1);
+                if (ridingBlock === plat) ridingBlock = null;
+            }
+        }
+
+        // ===== ボーナスコイン（赤）=====
+        for (let i = bonusCoins.length - 1; i >= 0; i--) {
+            const bc = bonusCoins[i];
+            bc.position.z += effectiveSpeed;
+            bc.rotation.z += 0.12;
+
+            const dx = Math.abs(player.position.x - bc.position.x);
+            const dy = Math.abs(player.position.y - bc.position.y);
+            const dz = Math.abs(player.position.z - bc.position.z);
+
+            if (dx < 0.65 && dy < 0.8 && dz < 0.65) {
+                createCoinEffect(bc.position);
+                triggerCoinFlash();
+                playSound('coin');
+                setTimeout(() => playSound('coin'), 80);
+                scene.remove(bc);
+                bonusCoins.splice(i, 1);
+                const bonusVal = 800 * combo;
+                score += bonusVal;
+                showMessage(`🔴 BONUS +${bonusVal.toLocaleString()}`, 1100);
+            } else if (bc.position.z > 7) {
+                scene.remove(bc);
+                bonusCoins.splice(i, 1);
+            }
+        }
+
         spawnTimer++;
         if (spawnTimer > cfg.obstRate) {
             spawnObstacle();
             spawnTimer = 0;
+        }
+
+        // プラットフォームは100フレームに1回スポーン
+        platformSpawnTimer++;
+        if (platformSpawnTimer > 150) {
+            spawnPlatform();
+            platformSpawnTimer = 0;
         }
 
         itemSpawnTimer++;
