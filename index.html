@@ -727,6 +727,20 @@
                 isOctahedron: typeRoll >= 0.72
             };
             obs.castShadow = true;
+
+            // Box型ブロックの上面に光るラインを追加（「乗れる」の視覚的ヒント）
+            if (!obs.userData.isOctahedron) {
+                const topGeo = new THREE.PlaneGeometry(w * 1.8, w * 1.8);
+                const topMat = new THREE.MeshBasicMaterial({
+                    color: 0xffffff, transparent: true, opacity: 0.35,
+                    depthWrite: false
+                });
+                const topMesh = new THREE.Mesh(topGeo, topMat);
+                topMesh.rotation.x = -Math.PI / 2;
+                topMesh.position.y = h / 2 + 0.01;   // 上面より少し上
+                obs.add(topMesh);
+            }
+
             scene.add(obs);
             obstacles.push(obs);
         }
@@ -1156,12 +1170,12 @@
             const obsTopY = obs.position.y + h;
             const playerBottom = player.position.y - 0.4;
             const prevPlayerBottom = prevPlayerY - 0.4;
-            const landingX = dx < (0.15 + w);
-            const landingZ = dz < 0.75;
+            const landingX = dx < (0.2 + w);
+            const landingZ = dz < 1.5;   // ブロックの前後1.5単位まで着地可能
             if (obs !== ridingBlock
-                && velocityY <= 0.02
-                && prevPlayerBottom >= obsTopY - 0.14
-                && playerBottom <= obsTopY + 0.1
+                && velocityY <= 0.05
+                && prevPlayerBottom >= obsTopY - 0.4
+                && playerBottom <= obsTopY + 0.3
                 && landingX && landingZ) {
                 // 上に着地！
                 ridingBlock = obs;
@@ -1170,6 +1184,8 @@
                 isJumping = false;
                 playSound('land');
                 triggerShake(0.06);
+                showMessage('LANDED! +100', 700);
+                score += 100 * combo;
             } else if (obs !== ridingBlock && dx < (0.3 + w * 0.8) && dy < (0.3 + h * 0.8) && dz < 0.5) {
                 // ===== 側面・下面衝突 → ダメージ =====
                 if (activeShield) {
