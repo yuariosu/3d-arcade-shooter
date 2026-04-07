@@ -3,12 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEON RUNNER 2049 - FINAL EDITION</title>
+    <title>SINGULARITY ENGINE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;900&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             margin: 0; overflow: hidden;
-            font-family: 'Segoe UI', sans-serif;
+            font-family: 'Noto Sans JP', 'Segoe UI', sans-serif;
             background: #000; color: #fff;
             user-select: none; cursor: crosshair;
         }
@@ -101,47 +104,68 @@
 
         #menu {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(10,10,25,0.95); padding: 32px 48px; border-radius: 12px;
-            text-align: center; z-index: 100; border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 0 50px rgba(0,255,255,0.2);
+            background: linear-gradient(160deg, #0e0520, #070310);
+            padding: 32px 48px; border-radius: 8px;
+            text-align: center; z-index: 100;
+            border: 1px solid rgba(170,100,255,0.25);
+            box-shadow: 0 0 40px rgba(100,0,200,0.2);
             min-width: min(400px, 90vw); max-width: 90vw;
-            backdrop-filter: blur(15px);
         }
         h1 {
-            margin: 0 0 25px 0; font-size: 42px;
-            background: linear-gradient(to right, #00ffff, #ff00ff);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            font-weight: 900; font-style: italic;
+            margin: 0 0 6px 0; font-size: 38px;
+            font-family: 'Orbitron', monospace;
+            color: #c8aaff;
+            font-weight: 900;
+            letter-spacing: 3px;
+            text-shadow: 0 0 18px rgba(180,120,255,0.5);
         }
         .diff-container {
-            display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
-            margin: 20px 0;
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+            margin: 18px 0;
         }
         .diff-btn {
-            background: transparent; border: 1px solid #555; color: #888;
-            padding: 12px; cursor: pointer; border-radius: 4px;
-            font-weight: bold; transition: all 0.2s; font-size: 14px;
+            background: transparent;
+            border: none;
+            border-left: 3px solid #444;
+            color: #777;
+            padding: 10px 12px;
+            cursor: pointer;
+            border-radius: 0;
+            font-weight: bold;
+            font-family: 'Noto Sans JP', sans-serif;
+            transition: all 0.18s;
+            font-size: 13px;
+            text-align: left;
         }
-        .diff-btn:hover { border-color: #fff; color: #fff; }
-        .diff-btn.active { background: #fff; color: #000; border-color: #fff; }
-        
+        .diff-btn:hover { border-left-color: #aa66ff; color: #ccc; }
+        .diff-btn.active { border-left-color: #aa66ff; color: #fff; background: rgba(170,100,255,0.1); }
+
         .start-btn {
-            padding: 15px 50px; font-size: 22px; font-weight: bold;
-            background: linear-gradient(90deg, #00ffff, #0088ff);
-            color: #000; border: none; border-radius: 4px;
-            cursor: pointer; transition: all 0.3s;
-            text-transform: uppercase; margin-top: 20px;
+            padding: 13px 44px; font-size: 18px; font-weight: bold;
+            font-family: 'Orbitron', monospace;
+            background: transparent;
+            color: #c8aaff;
+            border: 2px solid #aa66ff;
+            border-radius: 2px;
+            cursor: pointer; transition: all 0.25s;
+            letter-spacing: 2px;
+            margin-top: 18px;
         }
-        .start-btn:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(0,255,255,0.7); }
-        
+        .start-btn:hover {
+            background: rgba(170,100,255,0.15);
+            box-shadow: 0 0 20px rgba(170,100,255,0.4);
+            color: #fff;
+        }
+
         .menu-btn {
-            padding: 12px 40px; font-size: 18px; font-weight: bold;
-            background: transparent; border: 2px solid #fff;
-            color: #fff; border-radius: 4px;
-            cursor: pointer; transition: all 0.3s;
-            text-transform: uppercase; margin: 10px 5px;
+            padding: 10px 32px; font-size: 16px; font-weight: bold;
+            font-family: 'Noto Sans JP', sans-serif;
+            background: transparent; border: 1px solid #555;
+            color: #aaa; border-radius: 2px;
+            cursor: pointer; transition: all 0.25s;
+            margin: 8px 5px;
         }
-        .menu-btn:hover { background: #fff; color: #000; }
+        .menu-btn:hover { border-color: #ccc; color: #fff; }
 
         .hidden { display: none !important; }
 
@@ -179,12 +203,8 @@
         #constellation-hud.stage-4 { border-color: #ff3366; box-shadow: 0 0 24px rgba(255,51,102,0.7); animation: singularity-pulse 0.8s infinite; }
         @keyframes singularity-pulse { 0%,100%{box-shadow:0 0 20px rgba(255,51,102,0.7)} 50%{box-shadow:0 0 40px rgba(255,51,102,1)} }
 
-        /* ゲームタイトルのグラデーションを宇宙色へ */
-        .singularity-title {
-            background: linear-gradient(to right, #aa44ff, #ff0088) !important;
-            -webkit-background-clip: text !important;
-            -webkit-text-fill-color: transparent !important;
-        }
+        /* singularity-title: 通常h1スタイルと同じ（上書き不要） */
+        .singularity-title { }
     </style>
 </head>
 <body>
@@ -243,24 +263,39 @@
 
     <div id="menu">
         <div id="start-screen">
-            <h1 class="singularity-title">SINGULARITY ENGINE</h1>
-            <p style="margin-bottom: 5px; color: #aa66ff; font-size: 13px; letter-spacing: 2px;">— 宇宙はあなたに向かって崩壊する —</p>
-            <p style="margin-bottom: 12px; color: #555; font-size: 11px;">破壊した全ては あなたの軌道になる</p>
+            <h1 class="singularity-title">SINGULARITY<br>ENGINE</h1>
+            <p style="margin-bottom: 16px; color: #7755aa; font-size: 12px; letter-spacing: 1px;">撃て。集めろ。宇宙になれ。</p>
             <div class="diff-container">
-                <button class="diff-btn" onclick="selectDiff('easy', this)">🟢 EASY<br><span id="hs-easy" style="font-size:10px;color:#555;">BEST: 0</span></button>
-                <button class="diff-btn active" onclick="selectDiff('normal', this)">🔵 NORMAL<br><span id="hs-normal" style="font-size:10px;color:#555;">BEST: 0</span></button>
-                <button class="diff-btn" onclick="selectDiff('hard', this)">🔴 HARD<br><span style="font-size:10px;color:#888;">敵も攻撃！</span><br><span id="hs-hard" style="font-size:10px;color:#555;">BEST: 0</span></button>
-                <button class="diff-btn" onclick="selectDiff('expert', this)">💀 EXPERT<br><span style="font-size:10px;color:#888;">弾幕地獄</span><br><span id="hs-expert" style="font-size:10px;color:#555;">BEST: 0</span></button>
+                <button class="diff-btn" onclick="selectDiff('easy', this)">
+                    Easy<br>
+                    <span style="font-size:10px;color:#555;">のんびり入門</span><br>
+                    <span id="hs-easy" style="font-size:10px;color:#555;">BEST: 0</span>
+                </button>
+                <button class="diff-btn active" onclick="selectDiff('normal', this)">
+                    Normal<br>
+                    <span style="font-size:10px;color:#555;">標準</span><br>
+                    <span id="hs-normal" style="font-size:10px;color:#555;">BEST: 0</span>
+                </button>
+                <button class="diff-btn" onclick="selectDiff('hard', this)">
+                    Hard<br>
+                    <span style="font-size:10px;color:#776699;">敵が反撃してくる</span><br>
+                    <span id="hs-hard" style="font-size:10px;color:#555;">BEST: 0</span>
+                </button>
+                <button class="diff-btn" onclick="selectDiff('expert', this)">
+                    Expert<br>
+                    <span style="font-size:10px;color:#776699;">本気の弾幕</span><br>
+                    <span id="hs-expert" style="font-size:10px;color:#555;">BEST: 0</span>
+                </button>
             </div>
-            <button class="start-btn" id="btn-start">START</button>
-            <p style="margin-top: 15px; font-size: 11px; color: #666;">
-                💰コイン収集 | 🔫障害物破壊 | 連続回避でコンボ！<br>
-                Hard以上: 敵の弾幕を避けろ | ニアミスでボーナス
+            <button class="start-btn" id="btn-start">PLAY</button>
+            <p style="margin-top: 14px; font-size: 11px; color: #555; line-height: 1.7;">
+                コインを集め、障害物を壊し、デブリの軌道を広げろ<br>
+                Hard以上：敵の弾を避けながら戦え
             </p>
         </div>
         
         <div id="pause-screen" class="hidden">
-            <h1 style="font-size: 36px;">PAUSED</h1>
+            <h1 style="font-size: 30px; letter-spacing: 4px;">PAUSED</h1>
             <p style="margin: 15px 0; color: #aaa;">
                 ENERGY: <span id="pause-score" style="color:#00ffff;font-weight:bold;">0</span><br>
                 RESONANCE: <span id="pause-combo" style="color:#ffaa00;font-weight:bold;">x1</span><br>
@@ -271,7 +306,7 @@
         </div>
         
         <div id="gameover-screen" class="hidden">
-            <h1 style="-webkit-text-fill-color:unset;background:linear-gradient(to right,#ff4444,#aa00ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:32px;">SINGULARITY<br>INTERRUPTED</h1>
+            <h1 style="font-size:28px;color:#cc4466;text-shadow:0 0 16px rgba(200,50,80,0.5);">SINGULARITY<br>INTERRUPTED</h1>
             <p id="new-record-msg" style="color:#ffff00;font-weight:bold;font-size:16px;margin:5px 0 0;display:none;">🏆 NEW HIGH SCORE!</p>
             <p style="font-size: 16px; margin: 14px 0; line-height: 1.8;">
                 ENERGY: <span id="final-score" style="color:#00ffff; font-weight:bold;">0</span><br>
@@ -281,7 +316,7 @@
                 DESTROYED: <span id="destroyed-count" style="color:#ff0055; font-weight:bold;">0</span><br>
                 DEBRIS AT END: <span id="final-debris" style="color:#aa66ff; font-weight:bold;">0</span>
             </p>
-            <button class="start-btn" id="btn-retry" style="background: linear-gradient(90deg, #aa00ff, #ff0055);">RETRY</button>
+            <button class="start-btn" id="btn-retry" style="border-color:#cc4466;color:#cc8899;">RETRY</button>
             <button class="menu-btn" id="btn-home">HOME</button>
         </div>
     </div>
