@@ -735,20 +735,6 @@
                 isOctahedron: typeRoll >= 0.72
             };
             obs.castShadow = true;
-
-            // Box型ブロックの上面に光るラインを追加（「乗れる」の視覚的ヒント）
-            if (!obs.userData.isOctahedron) {
-                const topGeo = new THREE.PlaneGeometry(w * 1.8, w * 1.8);
-                const topMat = new THREE.MeshBasicMaterial({
-                    color: 0xffffff, transparent: true, opacity: 0.35,
-                    depthWrite: false
-                });
-                const topMesh = new THREE.Mesh(topGeo, topMat);
-                topMesh.rotation.x = -Math.PI / 2;
-                topMesh.position.y = h / 2 + 0.01;   // 上面より少し上
-                obs.add(topMesh);
-            }
-
             scene.add(obs);
             obstacles.push(obs);
         }
@@ -756,56 +742,56 @@
 
     // ===== 空中プラットフォーム（乗れる大型ブロック）=====
     function spawnPlatform() {
-        const PW = 3.2;   // 幅（X）
-        const PH = 0.35;  // 高さ（薄いプラットフォーム）
-        const PD = 1.8;   // 奥行き（Z）
-        const elevY = 1.6 + Math.random() * 1.8;  // 地面から1.6〜3.4の高さに浮く
+        const PW = 5.0;   // 幅（X）— 広くて乗りやすい
+        const PH = 0.6;   // 高さ — 薄すぎず視認しやすい
+        const PD = 6.0;   // 奥行き（Z）— 深くして着地ウィンドウを大きく
+        // 地面から1.1〜2.2mに浮く（ジャンプ1回で確実に届く高さ）
+        const elevY = 1.1 + Math.random() * 1.1;
 
-        // プラットフォーム本体
         const geo = new THREE.BoxGeometry(PW, PH, PD);
         const mat = new THREE.MeshStandardMaterial({
-            color: 0x0a0a1a,
-            emissive: 0x0055aa,
-            emissiveIntensity: 0.6
+            color: 0x05101a,
+            emissive: 0x0066cc,
+            emissiveIntensity: 0.7
         });
         const plat = new THREE.Mesh(geo, mat);
 
-        const lanes = [-2, 0, 2];
-        const cx = lanes[Math.floor(Math.random() * lanes.length)];
-        plat.position.set(cx, elevY + PH / 2, -52);
+        // 左右どこにでも置ける（センターか少しずらす）
+        const cx = (Math.random() - 0.5) * 2.0;
+        plat.position.set(cx, elevY + PH / 2, -55);
         plat.userData = { width: PW, height: PH, depth: PD, isPlatform: true };
         plat.castShadow = true;
 
-        // 上面：明るい青白い光る面
-        const topGeo = new THREE.PlaneGeometry(PW - 0.1, PD - 0.1);
+        // 上面：明るい青白い発光面
+        const topGeo = new THREE.PlaneGeometry(PW - 0.05, PD - 0.05);
         const topMat = new THREE.MeshBasicMaterial({
-            color: 0x44aaff, transparent: true, opacity: 0.6, depthWrite: false
+            color: 0x55ccff, transparent: true, opacity: 0.55, depthWrite: false
         });
         const topMesh = new THREE.Mesh(topGeo, topMat);
         topMesh.rotation.x = -Math.PI / 2;
         topMesh.position.y = PH / 2 + 0.01;
         plat.add(topMesh);
 
-        // 縁の光るライン（4辺）
+        // 縁の光るライン
         const edgeGeo = new THREE.EdgesGeometry(geo);
-        const edgeMat = new THREE.LineBasicMaterial({ color: 0x44ccff, linewidth: 1 });
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x55eeff });
         const edges = new THREE.LineSegments(edgeGeo, edgeMat);
         plat.add(edges);
 
         scene.add(plat);
         platforms.push(plat);
 
-        // プラットフォーム上にボーナスコインを3枚配置
-        const coinOffsets = [-1.0, 0, 1.0];
+        // ボーナスコイン3枚をプラットフォーム上に配置
+        const coinOffsets = [-1.4, 0, 1.4];
         coinOffsets.forEach(offset => {
-            const cGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.12, 16);
+            const cGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.14, 16);
             const cMat = new THREE.MeshStandardMaterial({
-                color: 0x220000, emissive: 0xff2200, emissiveIntensity: 1.2
+                color: 0x220000, emissive: 0xff2200, emissiveIntensity: 1.4
             });
             const bonusCoin = new THREE.Mesh(cGeo, cMat);
             bonusCoin.rotation.x = Math.PI / 2;
-            bonusCoin.position.set(cx + offset, elevY + PH + 0.5, -52);
-            bonusCoin.userData = { type: 'bonus_coin', platRef: plat };
+            bonusCoin.position.set(cx + offset, elevY + PH + 0.5, -55);
+            bonusCoin.userData = { type: 'bonus_coin' };
             scene.add(bonusCoin);
             bonusCoins.push(bonusCoin);
         });
@@ -1344,20 +1330,21 @@
             const plat = platforms[i];
             plat.position.z += effectiveSpeed;
 
-            const pw = plat.userData.width / 2;
-            const ph = plat.userData.height / 2;
+            const pw = plat.userData.width / 2;   // 2.5
+            const ph = plat.userData.height / 2;   // 0.3
             const pdx = Math.abs(player.position.x - plat.position.x);
             const pdz = Math.abs(player.position.z - plat.position.z);
             const platTopY = plat.position.y + ph;
-            const pBottom = player.position.y - 0.4;
+            const pBottom  = player.position.y - 0.4;
             const prevPBottom = prevPlayerY - 0.4;
 
-            // 上面着地判定
+            // 上面着地判定：PD=6.0 の奥行きを活かして pdz < 4.5 で広くとる
             if (plat !== ridingBlock
                 && velocityY <= 0.05
-                && prevPBottom >= platTopY - 0.4
-                && pBottom <= platTopY + 0.3
-                && pdx < pw && pdz < 1.5) {
+                && prevPBottom >= platTopY - 0.5
+                && pBottom    <= platTopY + 0.4
+                && pdx < pw + 0.3
+                && pdz < 4.5) {
                 ridingBlock = plat;
                 player.position.y = platTopY + 0.4;
                 velocityY = 0;
@@ -1367,7 +1354,7 @@
                 score += 200 * combo;
             }
 
-            if (plat.position.z > 7) {
+            if (plat.position.z > 10) {
                 scene.remove(plat);
                 platforms.splice(i, 1);
                 if (ridingBlock === plat) ridingBlock = null;
@@ -1394,7 +1381,7 @@
                 const bonusVal = 800 * combo;
                 score += bonusVal;
                 showMessage(`🔴 BONUS +${bonusVal.toLocaleString()}`, 1100);
-            } else if (bc.position.z > 7) {
+            } else if (bc.position.z > 10) {
                 scene.remove(bc);
                 bonusCoins.splice(i, 1);
             }
