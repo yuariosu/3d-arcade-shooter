@@ -372,6 +372,8 @@
     let boostTimer = 0, slowTimer = 0;
 
     let velocityX = 0, velocityY = 0, isJumping = false;
+    let ridingBlock = null;   // 乗っているブロック（null=地面 or 空中）
+    let prevPlayerY = 0.5;    // 前フレームのプレイヤーY（着地判定用）
     const GRAVITY = 0.025, JUMP_FORCE = 0.5, PLAYER_Y = 0.5;
     const keys = { left: false, right: false };
 
@@ -474,6 +476,10 @@
                 break;
             case 'intercept':
                 playTone(1000, 0.08, 0.2, 'sine', 600);
+                break;
+            case 'land':
+                playTone(200, 0.04, 0.18, 'square');
+                playTone(120, 0.07, 0.12, 'square');
                 break;
         }
     }
@@ -592,6 +598,7 @@
         player.position.set(0, PLAYER_Y, 2);
         player.rotation.set(0,0,0);
         velocityX = 0; velocityY = 0; isJumping = false;
+        ridingBlock = null; prevPlayerY = PLAYER_Y;
 
         obstacles.forEach(o => scene.remove(o));
         coins.forEach(c => scene.remove(c));
@@ -643,6 +650,7 @@
         debris.forEach(d => scene.remove(d.mesh));
         obstacles = []; coins = []; powerups = []; bullets = []; enemyBullets = []; particles = []; debris = [];
         constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
+        ridingBlock = null;
         scene.background.setHex(0x050505);
         if (scene.fog) scene.fog.color.setHex(0x050505);
     }
@@ -1078,12 +1086,30 @@
         player.position.x += velocityX;
         player.position.x = Math.max(-3.2, Math.min(3.2, player.position.x));
 
-        velocityY -= GRAVITY;
-        player.position.y += velocityY;
-        if (player.position.y <= PLAYER_Y) {
-            player.position.y = PLAYER_Y;
+        // 前フレームY保存（着地判定で使用）
+        prevPlayerY = player.position.y;
+
+        // ridingBlock有効性チェック：ブロックが消えたか通過したら落下
+        if (ridingBlock) {
+            if (!obstacles.includes(ridingBlock) || ridingBlock.position.z > player.position.z + 1.8) {
+                ridingBlock = null;
+            }
+        }
+
+        if (ridingBlock) {
+            // ブロック上面にY固定、ジャンプ可能状態を維持
+            const rH = ridingBlock.userData.height / 2;
+            player.position.y = ridingBlock.position.y + rH + 0.4;
             velocityY = 0;
             isJumping = false;
+        } else {
+            velocityY -= GRAVITY;
+            player.position.y += velocityY;
+            if (player.position.y <= PLAYER_Y) {
+                player.position.y = PLAYER_Y;
+                velocityY = 0;
+                isJumping = false;
+            }
         }
         player.rotation.x -= effectiveSpeed;
 
@@ -1125,7 +1151,27 @@
             const w = obs.userData.width / 2;
             const h = obs.userData.height / 2;
 
-            if (dx < (0.3 + w * 0.8) && dy < (0.3 + h * 0.8) && dz < 0.5) {
+            // ===== 上面着地判定 =====
+            // 前フレームでプレイヤー底面がブロック上面以上 → 今フレームで交差 → 着地
+            const obsTopY = obs.position.y + h;
+            const playerBottom = player.position.y - 0.4;
+            const prevPlayerBottom = prevPlayerY - 0.4;
+            const landingX = dx < (0.15 + w);
+            const landingZ = dz < 0.75;
+            if (obs !== ridingBlock
+                && velocityY <= 0.02
+                && prevPlayerBottom >= obsTopY - 0.14
+                && playerBottom <= obsTopY + 0.1
+                && landingX && landingZ) {
+                // 上に着地！
+                ridingBlock = obs;
+                player.position.y = obsTopY + 0.4;
+                velocityY = 0;
+                isJumping = false;
+                playSound('land');
+                triggerShake(0.06);
+            } else if (obs !== ridingBlock && dx < (0.3 + w * 0.8) && dy < (0.3 + h * 0.8) && dz < 0.5) {
+                // ===== 側面・下面衝突 → ダメージ =====
                 if (activeShield) {
                     activeShield = false;
                     updatePowerupUI();
@@ -1365,6 +1411,7 @@
     function gameOver() {
         playSound('gameover');
         isGameRunning = false;
+        ridingBlock = null;
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('gameover-screen').classList.remove('hidden');
         document.getElementById('controls-hint').classList.add('hidden');
@@ -1393,6 +1440,7 @@
         if (e.code === 'KeyW' || e.code === 'ArrowUp') shoot();
         if (e.code === 'Space') {
             if (!isJumping && isGameRunning) {
+                ridingBlock = null;   // ブロックから離脱
                 velocityY = JUMP_FORCE;
                 isJumping = true;
                 playSound('jump');
@@ -1439,6 +1487,7 @@
             // - lastY との差(frameDy)を使うことで、上下往復しても多重発火しない
             const frameDy = y - lastY;
             if (frameDy < -18 && !isJumping && !jumpLocked && isGameRunning) {
+                ridingBlock = null;   // ブロックから離脱
                 velocityY = JUMP_FORCE;
                 isJumping = true;
                 jumpLocked = true; // 指が下に戻るまでロック
