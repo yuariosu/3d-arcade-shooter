@@ -740,57 +740,50 @@
         }
     }
 
-    // ===== 空中プラットフォーム（乗れる大型ブロック）=====
+    // ===== 空中プラットフォーム（乗れる大型ブロック — 地上と同スケールの2階層）=====
     function spawnPlatform() {
-        const PW = 5.0;   // 幅（X）— 広くて乗りやすい
-        const PH = 0.6;   // 高さ — 薄すぎず視認しやすい
-        const PD = 6.0;   // 奥行き（Z）— 深くして着地ウィンドウを大きく
-        // 地面から1.1〜2.2mに浮く（ジャンプ1回で確実に届く高さ）
-        const elevY = 1.1 + Math.random() * 1.1;
+        const PW = 8.0;   // 幅（X）— 地上プレイエリアとほぼ同幅
+        const PH = 0.8;   // 高さ
+        const PD = 12.0;  // 奥行き（Z）— 長くて乗りやすい
+        const elevY = 2.2; // 地面から固定2.2m（ジャンプ1回で届く）
 
         const geo = new THREE.BoxGeometry(PW, PH, PD);
         const mat = new THREE.MeshStandardMaterial({
-            color: 0x05101a,
-            emissive: 0x0066cc,
-            emissiveIntensity: 0.7
+            color: 0x04090f,
+            emissive: 0x0077dd,
+            emissiveIntensity: 0.5
         });
         const plat = new THREE.Mesh(geo, mat);
-
-        // 左右どこにでも置ける（センターか少しずらす）
-        const cx = (Math.random() - 0.5) * 2.0;
-        plat.position.set(cx, elevY + PH / 2, -55);
+        plat.position.set(0, elevY + PH / 2, -58);
         plat.userData = { width: PW, height: PH, depth: PD, isPlatform: true };
         plat.castShadow = true;
 
-        // 上面：明るい青白い発光面
+        // 上面：青白い発光面
         const topGeo = new THREE.PlaneGeometry(PW - 0.05, PD - 0.05);
         const topMat = new THREE.MeshBasicMaterial({
-            color: 0x55ccff, transparent: true, opacity: 0.55, depthWrite: false
+            color: 0x44bbff, transparent: true, opacity: 0.45, depthWrite: false
         });
         const topMesh = new THREE.Mesh(topGeo, topMat);
         topMesh.rotation.x = -Math.PI / 2;
         topMesh.position.y = PH / 2 + 0.01;
         plat.add(topMesh);
 
-        // 縁の光るライン
-        const edgeGeo = new THREE.EdgesGeometry(geo);
-        const edgeMat = new THREE.LineBasicMaterial({ color: 0x55eeff });
-        const edges = new THREE.LineSegments(edgeGeo, edgeMat);
-        plat.add(edges);
+        // 縁のエッジライン
+        const edgeMat = new THREE.LineBasicMaterial({ color: 0x33ddff });
+        plat.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
 
         scene.add(plat);
         platforms.push(plat);
 
-        // ボーナスコイン3枚をプラットフォーム上に配置
-        const coinOffsets = [-1.4, 0, 1.4];
-        coinOffsets.forEach(offset => {
-            const cGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.14, 16);
+        // ボーナスコイン5枚をプラットフォーム上に配置
+        [-2.8, -1.4, 0, 1.4, 2.8].forEach(offset => {
+            const cGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.14, 16);
             const cMat = new THREE.MeshStandardMaterial({
-                color: 0x220000, emissive: 0xff2200, emissiveIntensity: 1.4
+                color: 0x220000, emissive: 0xff2200, emissiveIntensity: 1.5
             });
             const bonusCoin = new THREE.Mesh(cGeo, cMat);
             bonusCoin.rotation.x = Math.PI / 2;
-            bonusCoin.position.set(cx + offset, elevY + PH + 0.5, -55);
+            bonusCoin.position.set(offset, elevY + PH + 0.55, -58);
             bonusCoin.userData = { type: 'bonus_coin' };
             scene.add(bonusCoin);
             bonusCoins.push(bonusCoin);
@@ -1154,10 +1147,9 @@
         // 前フレームY保存（着地判定で使用）
         prevPlayerY = player.position.y;
 
-        // ridingBlock有効性チェック：ブロックが消えたか通過したら落下
+        // ridingBlock有効性チェック：プラットフォームが消えたか通過したら落下
         if (ridingBlock) {
-            const stillExists = obstacles.includes(ridingBlock) || platforms.includes(ridingBlock);
-            if (!stillExists || ridingBlock.position.z > player.position.z + 1.8) {
+            if (!platforms.includes(ridingBlock) || ridingBlock.position.z > player.position.z + 1.8) {
                 ridingBlock = null;
             }
         }
@@ -1217,29 +1209,8 @@
             const w = obs.userData.width / 2;
             const h = obs.userData.height / 2;
 
-            // ===== 上面着地判定 =====
-            // 前フレームでプレイヤー底面がブロック上面以上 → 今フレームで交差 → 着地
-            const obsTopY = obs.position.y + h;
-            const playerBottom = player.position.y - 0.4;
-            const prevPlayerBottom = prevPlayerY - 0.4;
-            const landingX = dx < (0.2 + w);
-            const landingZ = dz < 1.5;   // ブロックの前後1.5単位まで着地可能
-            if (obs !== ridingBlock
-                && velocityY <= 0.05
-                && prevPlayerBottom >= obsTopY - 0.4
-                && playerBottom <= obsTopY + 0.3
-                && landingX && landingZ) {
-                // 上に着地！
-                ridingBlock = obs;
-                player.position.y = obsTopY + 0.4;
-                velocityY = 0;
-                isJumping = false;
-                playSound('land');
-                triggerShake(0.06);
-                showMessage('LANDED! +100', 700);
-                score += 100 * combo;
-            } else if (obs !== ridingBlock && dx < (0.3 + w * 0.8) && dy < (0.3 + h * 0.8) && dz < 0.5) {
-                // ===== 側面・下面衝突 → ダメージ =====
+            // 衝突 → ダメージ（地上ブロックは乗れない）
+            if (dx < (0.3 + w * 0.8) && dy < (0.3 + h * 0.8) && dz < 0.5) {
                 if (activeShield) {
                     activeShield = false;
                     updatePowerupUI();
@@ -1338,13 +1309,13 @@
             const pBottom  = player.position.y - 0.4;
             const prevPBottom = prevPlayerY - 0.4;
 
-            // 上面着地判定：PD=6.0 の奥行きを活かして pdz < 4.5 で広くとる
+            // 上面着地判定：PD=12 の奥行きを活かして pdz < 7.0 で広いウィンドウ
             if (plat !== ridingBlock
                 && velocityY <= 0.05
                 && prevPBottom >= platTopY - 0.5
                 && pBottom    <= platTopY + 0.4
                 && pdx < pw + 0.3
-                && pdz < 4.5) {
+                && pdz < 7.0) {
                 ridingBlock = plat;
                 player.position.y = platTopY + 0.4;
                 velocityY = 0;
