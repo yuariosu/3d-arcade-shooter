@@ -2,46 +2,117 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>SINGULARITY ENGINE</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;900&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            /* セーフエリア（ノッチ・ホームバー）を加味した画面端の余白 */
+            --edge: clamp(10px, 2.5vw, 20px);
+            --safe-top: max(var(--edge), env(safe-area-inset-top));
+            --safe-right: max(var(--edge), env(safe-area-inset-right));
+            --safe-bottom: max(var(--edge), env(safe-area-inset-bottom));
+            --safe-left: max(var(--edge), env(safe-area-inset-left));
+
+            /* 暗背景で読める文字色（旧 #555/#666/#777/#888 の置き換え） */
+            --text-strong: #ffffff;
+            --text: #d4d4e0;
+            --text-muted: #a9a9bd;
+            --text-accent: #b9a2ec;
+            --accent: #aa66ff;
+            --accent-soft: #c8aaff;
+            --focus: #ffe066;
+            --panel-bg: rgba(6,4,14,0.72);
+            --panel-border: rgba(255,255,255,0.22);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             margin: 0; overflow: hidden;
             font-family: 'Noto Sans JP', 'Segoe UI', sans-serif;
             background: #000; color: #fff;
             user-select: none; cursor: crosshair;
+            -webkit-tap-highlight-color: transparent;
         }
         canvas { display: block; width: 100vw; height: 100vh; }
 
+        /* ===== フォーカス表示（キーボード操作時のみ） ===== */
+        button { font: inherit; }
+        button:focus { outline: none; }
+        button:focus-visible {
+            outline: 3px solid var(--focus);
+            outline-offset: 3px;
+            box-shadow: 0 0 0 6px rgba(255,224,102,0.25);
+        }
+
+        /* ===== HUD ===== */
         #hud {
-            position: absolute; top: 20px; left: 20px; z-index: 10;
-            display: flex; gap: 15px; pointer-events: none;
+            position: absolute; top: var(--safe-top); left: var(--safe-left); z-index: 10;
+            display: flex; gap: clamp(6px, 1.5vw, 15px); pointer-events: none;
+            max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 230px);
+            flex-wrap: wrap;
         }
         .stat {
-            background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
-            padding: 8px 20px; border-radius: 4px;
-            backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            padding: clamp(5px, 1vw, 8px) clamp(10px, 2vw, 20px); border-radius: 6px;
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            min-width: clamp(72px, 16vw, 120px);
         }
-        .stat-label { font-size: 10px; color: #888; text-transform: uppercase; }
-        .stat-value { font-size: 22px; font-weight: bold; display: block; margin-top: -3px; }
-        #score-val { color: #00ffff; }
-        #dist-val { color: #ff00ff; }
-        #combo-val { color: #ffaa00; }
+        .stat-label {
+            font-size: clamp(10px, 1.6vw, 12px); color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700;
+            line-height: 1.3;
+        }
+        .stat-value {
+            font-family: 'Orbitron', 'Noto Sans JP', monospace;
+            font-size: clamp(16px, 3.6vw, 24px); font-weight: 900; display: block;
+            line-height: 1.2; font-variant-numeric: tabular-nums;
+            text-shadow: 0 0 10px currentColor, 0 1px 2px #000;
+            white-space: nowrap;
+        }
+        #score-val { color: #33ffff; }
+        #dist-val { color: #ff55ff; }
+        #combo-val { color: #ffbb33; }
+
+        /* ===== ポーズボタン（HUD は pointer-events:none なので独立配置） ===== */
+        #btn-pause {
+            position: absolute; z-index: 60;
+            top: var(--safe-top); right: var(--safe-right);
+            width: 48px; height: 48px; min-width: 44px; min-height: 44px;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 10px; cursor: pointer; pointer-events: auto;
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: border-color 0.2s, background 0.2s;
+            touch-action: manipulation;
+        }
+        #btn-pause::before, #btn-pause::after {
+            content: ''; width: 5px; height: 18px; border-radius: 2px; background: #fff;
+        }
+        #btn-pause:hover { border-color: var(--accent-soft); background: rgba(40,20,80,0.8); }
+        /* メニュー（スタート/ポーズ/ゲームオーバー）表示中は非表示 = プレイ中のみ表示 */
+        #menu:not(.hidden) ~ #btn-pause { display: none; }
 
         #cooldown-container {
-            position: absolute; top: 20px; right: 20px; z-index: 10;
-            width: 150px;
+            position: absolute; z-index: 10;
+            top: var(--safe-top); right: calc(var(--safe-right) + 60px);
+            width: clamp(110px, 18vw, 160px);
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
+            border-radius: 6px; padding: 6px 10px 8px;
+            backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+            pointer-events: none;
         }
         #cooldown-label {
-            font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px;
+            font-size: clamp(10px, 1.6vw, 12px); color: var(--text-muted); font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 5px;
         }
         #cooldown-bar-bg {
-            width: 100%; height: 15px; background: rgba(0,0,0,0.6);
-            border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+            width: 100%; height: 12px; background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.25); border-radius: 8px;
             overflow: hidden;
         }
         #cooldown-bar {
@@ -51,35 +122,48 @@
             box-shadow: 0 0 10px rgba(255,0,85,0.8);
         }
 
+        /* ===== 操作ヒント: 表示直後はくっきり → 数秒でうっすら常時表示へ ===== */
         #controls-hint {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            z-index: 10; background: rgba(0,0,0,0.5); padding: 8px 20px;
-            border-radius: 4px; font-size: 12px; color: #888;
-            pointer-events: none; text-align: center;
+            position: absolute; bottom: var(--safe-bottom); left: 50%; transform: translateX(-50%);
+            z-index: 10; background: rgba(0,0,0,0.6); padding: 8px 16px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 6px; font-size: clamp(11px, 1.8vw, 13px); color: var(--text);
+            pointer-events: none; text-align: center; line-height: 1.6;
+            width: max-content; max-width: calc(100vw - var(--safe-left) - var(--safe-right));
+            animation: hint-fade 7s ease-out forwards;
+        }
+        @keyframes hint-fade {
+            0%, 65% { opacity: 1; }
+            100% { opacity: 0.38; }
         }
 
+        /* ===== フィードバック表示 ===== */
         #combo-flash {
             position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 72px; font-weight: 900; color: #ffaa00;
-            text-shadow: 0 0 20px rgba(255,170,0,0.8);
+            font-family: 'Orbitron', 'Noto Sans JP', sans-serif;
+            font-size: clamp(32px, 10vw, 72px); font-weight: 900; color: #ffaa00;
+            text-shadow: 0 0 20px rgba(255,170,0,0.8), 0 2px 4px #000;
             opacity: 0; z-index: 50; pointer-events: none;
             font-style: italic; transition: opacity 0.3s;
+            white-space: nowrap; max-width: 96vw;
         }
 
         #nearmiss-msg {
             position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 36px; font-weight: bold; color: #00ff00;
-            text-shadow: 0 0 15px rgba(0,255,0,0.9);
+            font-size: clamp(18px, 5.5vw, 36px); font-weight: bold; color: #33ff66;
+            text-shadow: 0 0 15px rgba(0,255,0,0.9), 0 2px 3px #000;
             opacity: 0; z-index: 50; pointer-events: none;
             transition: opacity 0.3s;
+            width: max-content; max-width: 92vw; text-align: center;
+            line-height: 1.25; overflow-wrap: anywhere;
         }
 
         #powerups {
-            position: absolute; top: 80px; right: 20px; z-index: 10;
-            display: flex; flex-direction: column; gap: 8px;
+            position: absolute; top: calc(var(--safe-top) + 64px); right: var(--safe-right); z-index: 10;
+            display: flex; flex-direction: column; gap: 8px; pointer-events: none;
         }
         .powerup-slot {
-            width: 60px; border-radius: 8px;
+            width: clamp(48px, 10vw, 60px); border-radius: 8px;
             background: rgba(0,0,0,0.6); border: 2px solid;
             backdrop-filter: blur(5px);
             animation: pulse 1s infinite;
@@ -87,10 +171,10 @@
         }
         .powerup-slot-inner {
             display: flex; align-items: center; justify-content: center;
-            height: 44px; font-size: 24px;
+            height: clamp(36px, 8vw, 44px); font-size: clamp(20px, 4vw, 24px);
         }
         .timer-track {
-            height: 5px; background: rgba(255,255,255,0.1);
+            height: 5px; background: rgba(255,255,255,0.15);
             margin: 0 4px 4px;
         }
         .timer-fill {
@@ -102,70 +186,193 @@
         .slow-fill   { background: linear-gradient(90deg, #00cc44, #00ffaa); }
         @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
 
+        /* ===== メニュー共通 ===== */
         #menu {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: linear-gradient(160deg, #0e0520, #070310);
-            padding: 32px 48px; border-radius: 8px;
+            background: linear-gradient(160deg, #120828, #070310);
+            padding: clamp(20px, 4vw, 32px) clamp(16px, 5vw, 44px); border-radius: 10px;
             text-align: center; z-index: 100;
-            border: 1px solid rgba(170,100,255,0.25);
-            box-shadow: 0 0 40px rgba(100,0,200,0.2);
-            min-width: min(400px, 90vw); max-width: 90vw;
+            border: 1px solid rgba(170,100,255,0.35);
+            box-shadow: 0 0 40px rgba(100,0,200,0.25);
+            width: min(560px, calc(100vw - var(--safe-left) - var(--safe-right)));
+            max-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
+            max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+            overflow-y: auto; overscroll-behavior: contain;
+            cursor: default;
         }
         h1 {
-            margin: 0 0 6px 0; font-size: 38px;
+            margin: 0 0 6px 0; font-size: clamp(26px, 7vw, 38px);
             font-family: 'Orbitron', monospace;
-            color: #c8aaff;
+            color: var(--accent-soft);
             font-weight: 900;
-            letter-spacing: 3px;
+            letter-spacing: clamp(1px, 0.6vw, 3px);
             text-shadow: 0 0 18px rgba(180,120,255,0.5);
+            line-height: 1.15;
         }
+        .tagline {
+            margin-bottom: 16px; color: var(--text-accent); font-size: 13px; letter-spacing: 0.15em;
+        }
+        .section-title {
+            font-family: 'Orbitron', 'Noto Sans JP', sans-serif;
+            font-size: 11px; letter-spacing: 0.2em; color: var(--accent-soft);
+            text-align: left; margin: 0 0 8px; font-weight: 600;
+        }
+
+        /* ===== 遊び方 ===== */
+        .howto {
+            text-align: left; margin: 4px 0 16px; padding: 14px 16px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 8px; font-size: 13px; color: var(--text); line-height: 1.65;
+        }
+        .howto-goal { margin-bottom: 12px; }
+        .howto-goal strong { color: #fff; }
+        .howto-cols {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 18px;
+        }
+        .howto-sub {
+            font-size: 11px; color: var(--text-muted); letter-spacing: 0.12em; font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .keys { list-style: none; display: grid; gap: 4px; }
+        .keys li { display: flex; align-items: baseline; gap: 8px; }
+        .keys .k { flex: 0 0 auto; min-width: 92px; color: #fff; }
+        kbd {
+            display: inline-block; min-width: 1.8em; padding: 0 5px; margin-right: 2px;
+            font-family: 'Orbitron', 'Noto Sans JP', monospace; font-size: 10px; line-height: 1.8;
+            text-align: center; color: #fff;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.35);
+            border-bottom-width: 2px; border-radius: 4px;
+        }
+        .howto-items {
+            margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.15);
+            font-size: 12px; color: var(--text-muted);
+        }
+        .howto-items span { color: var(--text); white-space: nowrap; margin-right: 10px; }
+
+        /* ===== 難易度 ===== */
         .diff-container {
             display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
-            margin: 18px 0;
+            margin: 0 0 6px;
         }
         .diff-btn {
-            background: transparent;
-            border: none;
-            border-left: 3px solid #444;
-            color: #777;
-            padding: 10px 12px;
+            position: relative;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-left: 4px solid #5a5a70;
+            color: var(--text);
+            padding: 10px 12px 10px 14px; min-height: 44px;
             cursor: pointer;
-            border-radius: 0;
-            font-weight: bold;
+            border-radius: 6px;
             font-family: 'Noto Sans JP', sans-serif;
-            transition: all 0.18s;
-            font-size: 13px;
+            transition: background 0.18s, border-color 0.18s, box-shadow 0.18s;
+            font-size: 13px; line-height: 1.5;
             text-align: left;
+            display: flex; flex-direction: column; gap: 2px;
         }
-        .diff-btn:hover { border-left-color: #aa66ff; color: #ccc; }
-        .diff-btn.active { border-left-color: #aa66ff; color: #fff; background: rgba(170,100,255,0.1); }
+        .diff-name {
+            font-family: 'Orbitron', 'Noto Sans JP', sans-serif; font-weight: 900;
+            font-size: 15px; letter-spacing: 0.06em; color: #fff;
+        }
+        .diff-desc { font-size: 12px; color: var(--text-accent); }
+        .diff-spec { font-size: 11px; color: var(--text-muted); }
+        .diff-spec b { color: var(--text); font-weight: 700; }
+        .diff-best {
+            margin-top: 4px; font-family: 'Orbitron', 'Noto Sans JP', monospace;
+            font-size: 12px; font-weight: 600; color: #ffd166;
+            font-variant-numeric: tabular-nums;
+        }
+        .diff-btn:hover { border-color: rgba(200,170,255,0.5); border-left-color: var(--accent); background: rgba(170,100,255,0.08); }
+        .diff-btn.active {
+            border-color: var(--accent); border-left-color: #e0c8ff;
+            background: rgba(170,100,255,0.22);
+            box-shadow: 0 0 0 1px var(--accent) inset, 0 0 18px rgba(170,100,255,0.35);
+        }
+        .diff-btn.active::after {
+            content: '✓ 選択中'; position: absolute; top: 8px; right: 10px;
+            font-size: 10px; font-weight: 700; color: #1a0b33;
+            background: var(--accent-soft); padding: 1px 7px; border-radius: 10px;
+        }
+        .diff-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
+        /* ===== ボタン（主 / 副） ===== */
         .start-btn {
-            padding: 13px 44px; font-size: 18px; font-weight: bold;
+            padding: 13px 44px; min-height: 48px; font-size: 18px; font-weight: bold;
             font-family: 'Orbitron', monospace;
-            background: transparent;
-            color: #c8aaff;
-            border: 2px solid #aa66ff;
-            border-radius: 2px;
-            cursor: pointer; transition: all 0.25s;
+            background: rgba(170,100,255,0.22);
+            color: #fff;
+            border: 2px solid var(--accent);
+            border-radius: 4px;
+            cursor: pointer; transition: background 0.25s, box-shadow 0.25s;
             letter-spacing: 2px;
-            margin-top: 18px;
+            margin-top: 16px;
+            box-shadow: 0 0 14px rgba(170,100,255,0.3);
         }
         .start-btn:hover {
-            background: rgba(170,100,255,0.15);
-            box-shadow: 0 0 20px rgba(170,100,255,0.4);
-            color: #fff;
+            background: rgba(170,100,255,0.4);
+            box-shadow: 0 0 24px rgba(170,100,255,0.55);
         }
 
         .menu-btn {
-            padding: 10px 32px; font-size: 16px; font-weight: bold;
+            padding: 10px 28px; min-height: 44px; min-width: 120px; font-size: 15px; font-weight: bold;
             font-family: 'Noto Sans JP', sans-serif;
-            background: transparent; border: 1px solid #555;
-            color: #aaa; border-radius: 2px;
-            cursor: pointer; transition: all 0.25s;
-            margin: 8px 5px;
+            background: transparent; border: 1px solid #8a8aa0;
+            color: var(--text); border-radius: 4px;
+            cursor: pointer; transition: border-color 0.25s, color 0.25s, background 0.25s;
+            margin: 6px 5px;
         }
-        .menu-btn:hover { border-color: #ccc; color: #fff; }
+        .menu-btn:hover { border-color: #fff; color: #fff; background: rgba(255,255,255,0.06); }
+
+        .btn-row {
+            display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: center;
+            margin-top: 18px;
+        }
+        .btn-row .start-btn, .btn-row .menu-btn { margin: 0; }
+        .btn-primary { min-width: 180px; }
+        .btn-secondary { font-size: 14px; }
+        .btn-danger { border-color: #ff7a7a; color: #ffb3b3; }
+        .btn-danger:hover { border-color: #ff9a9a; color: #fff; background: rgba(255,80,80,0.12); }
+        .btn-gameover { border-color: #ff5c85; background: rgba(204,68,102,0.25); box-shadow: 0 0 14px rgba(204,68,102,0.35); }
+        .btn-gameover:hover { background: rgba(204,68,102,0.42); box-shadow: 0 0 24px rgba(204,68,102,0.6); }
+
+        /* ===== ポーズ/ゲームオーバーの統計グリッド ===== */
+        .pause-title { font-size: clamp(24px, 6vw, 30px); letter-spacing: 4px; }
+        .gameover-title {
+            font-size: clamp(22px, 6vw, 28px); color: #ff6b8f;
+            text-shadow: 0 0 16px rgba(200,50,80,0.5);
+        }
+        .new-record {
+            color: #ffe14d; font-weight: bold; font-size: 16px; margin: 6px 0 0;
+            text-shadow: 0 0 10px rgba(255,225,77,0.5);
+        }
+        .result-grid {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+            margin: 16px 0 0; text-align: left;
+        }
+        .result-item {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 6px; padding: 8px 12px;
+            display: flex; flex-direction: column; gap: 2px; min-width: 0;
+        }
+        .result-item.is-main { grid-column: 1 / -1; background: rgba(0,255,255,0.06); border-color: rgba(0,255,255,0.3); }
+        .result-label {
+            font-size: 11px; color: var(--text-muted); font-weight: 700;
+            letter-spacing: 0.12em; text-transform: uppercase;
+        }
+        .result-value {
+            font-family: 'Orbitron', 'Noto Sans JP', monospace;
+            font-size: clamp(16px, 4vw, 20px); font-weight: 900;
+            font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+        }
+        .result-item.is-main .result-value { font-size: clamp(24px, 7vw, 32px); }
+        .result-sub { font-size: 12px; color: var(--text-muted); }
+        .result-sub .result-value { font-size: 13px; }
+        .v-energy { color: #33ffff; }
+        .v-dist { color: #ff66ff; }
+        .v-combo { color: #ffbb33; }
+        .v-destroy { color: #ff5c8a; }
+        .v-debris { color: #c49bff; }
+        .v-best { color: #ffd166; }
+        .hint-line { margin-top: 12px; font-size: 12px; color: var(--text-muted); }
 
         .hidden { display: none !important; }
 
@@ -186,16 +393,16 @@
 
         /* コンステレーションHUD */
         #constellation-hud {
-            position: absolute; bottom: 60px; right: 20px; z-index: 10;
-            background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.15);
+            position: absolute; bottom: calc(var(--safe-bottom) + 52px); right: var(--safe-right); z-index: 10;
+            background: var(--panel-bg); border: 1px solid var(--panel-border);
             padding: 8px 14px; border-radius: 6px; backdrop-filter: blur(8px);
             pointer-events: none; text-align: right;
             transition: border-color 0.6s, box-shadow 0.6s;
         }
         #constellation-hud.hidden { display: none !important; }
-        #const-label { font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
-        #const-stage-name { font-size: 13px; font-weight: bold; color: #888; }
-        #const-count { font-size: 20px; font-weight: 900; color: #aa66ff; }
+        #const-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700; }
+        #const-stage-name { font-size: 13px; font-weight: bold; color: var(--text); }
+        #const-count { font-family: 'Orbitron', monospace; font-size: clamp(18px, 3.5vw, 22px); font-weight: 900; color: #c49bff; font-variant-numeric: tabular-nums; }
         /* 段階ごとの発光色 */
         #constellation-hud.stage-1 { border-color: #aa66ff; box-shadow: 0 0 8px rgba(170,102,255,0.3); }
         #constellation-hud.stage-2 { border-color: #00ffcc; box-shadow: 0 0 12px rgba(0,255,204,0.4); }
@@ -205,11 +412,55 @@
 
         /* singularity-title: 通常h1スタイルと同じ（上書き不要） */
         .singularity-title { }
+
+        /* ===== スマホ・狭い画面 ===== */
+        @media (max-width: 640px) {
+            #hud { max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 60px); }
+            /* 武器ゲージはHUDの下へ移動して横幅の取り合いを回避 */
+            #cooldown-container {
+                top: calc(var(--safe-top) + 58px); right: auto; left: var(--safe-left);
+                width: clamp(120px, 40vw, 180px); padding: 4px 8px 6px;
+            }
+            #cooldown-label { font-size: 10px; margin-bottom: 3px; }
+            #cooldown-bar-bg { height: 9px; }
+            #constellation-hud { bottom: calc(var(--safe-bottom) + 64px); padding: 6px 10px; }
+            .diff-container { grid-template-columns: 1fr 1fr; gap: 6px; }
+            .diff-btn { padding: 9px 10px 9px 12px; }
+            .diff-btn.active::after { content: '✓'; padding: 0 6px; }
+            .howto { padding: 12px; font-size: 12px; }
+            .start-btn { padding: 12px 28px; width: 100%; }
+            .btn-row { flex-direction: column; align-items: stretch; }
+            .btn-row .menu-btn { width: 100%; }
+        }
+        @media (max-width: 380px) {
+            .diff-container { grid-template-columns: 1fr; }
+            .stat { min-width: 0; }
+        }
+        @media (max-height: 500px) and (orientation: landscape) {
+            #cooldown-container { top: var(--safe-top); left: auto; right: calc(var(--safe-right) + 60px); }
+            .howto-cols { grid-template-columns: 1fr 1fr; }
+        }
+
+        /* ===== 動きを減らす設定への配慮 ===== */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+            .powerup-slot, #constellation-hud.stage-4 { animation: none !important; }
+            /* ヒントは点滅/フェードさせず、最初から控えめに常時表示 */
+            #controls-hint { animation: none !important; opacity: 0.6; }
+            /* 画面全体のフラッシュを弱める */
+            #damage-flash { background: rgba(255, 0, 50, 0.28); }
+            #coin-flash { background: rgba(255, 255, 0, 0.08); }
+        }
     </style>
 </head>
 <body>
 
-    <div id="hud">
+    <div id="hud" role="status" aria-label="スコア表示">
         <div class="stat">
             <div class="stat-label">ENERGY</div>
             <div class="stat-value" id="score-val">0</div>
@@ -245,81 +496,148 @@
     <div id="coin-flash"></div>
 
     <div id="powerups">
-        <div id="powerup-shield" class="powerup-slot hidden" style="border-color:#00aaff;">
+        <div id="powerup-shield" class="powerup-slot hidden" style="border-color:#00aaff;" aria-label="シールド有効">
             <div class="powerup-slot-inner">🛡️</div>
         </div>
-        <div id="powerup-boost" class="powerup-slot hidden" style="border-color:#ffff00;">
+        <div id="powerup-boost" class="powerup-slot hidden" style="border-color:#ffff00;" aria-label="ブースト有効">
             <div class="powerup-slot-inner">⚡</div>
             <div class="timer-track"><div id="boost-timer-bar" class="timer-fill boost-fill"></div></div>
         </div>
-        <div id="powerup-slow" class="powerup-slot hidden" style="border-color:#00ff88;">
+        <div id="powerup-slow" class="powerup-slot hidden" style="border-color:#00ff88;" aria-label="スローモー有効">
             <div class="powerup-slot-inner">🕐</div>
             <div class="timer-track"><div id="slow-timer-bar" class="timer-fill slow-fill"></div></div>
         </div>
     </div>
 
-    <div id="combo-flash"></div>
-    <div id="nearmiss-msg"></div>
+    <div id="combo-flash" aria-hidden="true"></div>
+    <div id="nearmiss-msg" aria-hidden="true"></div>
 
     <div id="menu">
         <div id="start-screen">
             <h1 class="singularity-title">SINGULARITY<br>ENGINE</h1>
-            <p style="margin-bottom: 16px; color: #7755aa; font-size: 12px; letter-spacing: 1px;">撃て。集めろ。宇宙になれ。</p>
-            <div class="diff-container">
-                <button class="diff-btn" onclick="selectDiff('easy', this)">
-                    Easy<br>
-                    <span style="font-size:10px;color:#555;">のんびり入門</span><br>
-                    <span id="hs-easy" style="font-size:10px;color:#555;">BEST: 0</span>
+            <p class="tagline">撃て。集めろ。宇宙になれ。</p>
+
+            <section class="howto" aria-labelledby="howto-title">
+                <h2 class="section-title" id="howto-title">HOW TO PLAY</h2>
+                <p class="howto-goal">
+                    迫る障害物を<strong>避けるか撃ち壊して</strong>進み、<strong>ENERGY（スコア）</strong>を稼ごう。
+                    3回連続で避けるごとに <strong>RESONANCE（倍率）</strong>が上がり（最大x10）、ギリギリの回避はニアミスボーナス。
+                    壊した残骸は周囲を周回し、数が増えるほど強力に。<strong>ぶつかるとゲームオーバー</strong>。
+                </p>
+                <div class="howto-cols">
+                    <div>
+                        <div class="howto-sub">⌨ キーボード / マウス</div>
+                        <ul class="keys">
+                            <li><span class="k"><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd></span>左右に移動</li>
+                            <li><span class="k"><kbd>SPACE</kbd></span>ジャンプ</li>
+                            <li><span class="k"><kbd>W</kbd> / <kbd>↑</kbd> / クリック</span>射撃</li>
+                            <li><span class="k"><kbd>ESC</kbd> / ⏸</span>ポーズ</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <div class="howto-sub">📱 タッチ</div>
+                        <ul class="keys">
+                            <li><span class="k">左右にスワイプ</span>移動（指を置いたまま）</li>
+                            <li><span class="k">上にフリック</span>ジャンプ</li>
+                            <li><span class="k">タップ</span>射撃</li>
+                            <li><span class="k">右上の ⏸</span>ポーズ</li>
+                        </ul>
+                    </div>
+                </div>
+                <p class="howto-items">
+                    <span>🪙 コイン: +200×倍率</span><span>🛡️ シールド: 1回防御</span><span>⚡ ブースト: 回避点x2</span><span>🕐 スロー: 減速</span>
+                </p>
+            </section>
+
+            <h2 class="section-title" id="diff-title">DIFFICULTY</h2>
+            <div class="diff-container" role="group" aria-labelledby="diff-title">
+                <button class="diff-btn" onclick="selectDiff('easy', this)" aria-pressed="false" aria-label="Easy: のんびり入門。速度が最も遅く、敵の弾なし">
+                    <span class="diff-name">Easy</span>
+                    <span class="diff-desc">のんびり入門</span>
+                    <span class="diff-spec">速度 <b>●○○○</b>　敵弾 <b>なし</b></span>
+                    <span id="hs-easy" class="diff-best">BEST: 0</span>
                 </button>
-                <button class="diff-btn active" onclick="selectDiff('normal', this)">
-                    Normal<br>
-                    <span style="font-size:10px;color:#555;">標準</span><br>
-                    <span id="hs-normal" style="font-size:10px;color:#555;">BEST: 0</span>
+                <button class="diff-btn active" onclick="selectDiff('normal', this)" aria-pressed="true" aria-label="Normal: 標準。速度は速めで加速も速い、敵の弾なし">
+                    <span class="diff-name">Normal</span>
+                    <span class="diff-desc">標準・スピード勝負</span>
+                    <span class="diff-spec">速度 <b>●●●○</b>　敵弾 <b>なし</b></span>
+                    <span id="hs-normal" class="diff-best">BEST: 0</span>
                 </button>
-                <button class="diff-btn" onclick="selectDiff('hard', this)">
-                    Hard<br>
-                    <span style="font-size:10px;color:#776699;">敵が反撃してくる</span><br>
-                    <span id="hs-hard" style="font-size:10px;color:#555;">BEST: 0</span>
+                <button class="diff-btn" onclick="selectDiff('hard', this)" aria-pressed="false" aria-label="Hard: 敵が反撃してくる。速度はやや遅め、敵弾は最大4発">
+                    <span class="diff-name">Hard</span>
+                    <span class="diff-desc">敵が反撃してくる</span>
+                    <span class="diff-spec">速度 <b>●●○○</b>　敵弾 <b>最大4発</b></span>
+                    <span id="hs-hard" class="diff-best">BEST: 0</span>
                 </button>
-                <button class="diff-btn" onclick="selectDiff('expert', this)">
-                    Expert<br>
-                    <span style="font-size:10px;color:#776699;">本気の弾幕</span><br>
-                    <span id="hs-expert" style="font-size:10px;color:#555;">BEST: 0</span>
+                <button class="diff-btn" onclick="selectDiff('expert', this)" aria-pressed="false" aria-label="Expert: 本気の弾幕。速度が最も速く、敵弾は最大6発、障害物は最大3つ同時">
+                    <span class="diff-name">Expert</span>
+                    <span class="diff-desc">本気の弾幕</span>
+                    <span class="diff-spec">速度 <b>●●●●</b>　敵弾 <b>最大6発</b>・3連障害物</span>
+                    <span id="hs-expert" class="diff-best">BEST: 0</span>
                 </button>
             </div>
-            <button class="start-btn" id="btn-start">PLAY</button>
-            <p style="margin-top: 14px; font-size: 11px; color: #555; line-height: 1.7;">
-                コインを集め、障害物を壊し、デブリの軌道を広げろ<br>
-                Hard以上：敵の弾を避けながら戦え
-            </p>
+            <p class="diff-note">スコア計算は全難易度共通。ベストスコアは難易度ごとに記録されます。</p>
+            <button class="start-btn btn-primary" id="btn-start" aria-label="選択した難易度でゲーム開始">PLAY</button>
         </div>
-        
-        <div id="pause-screen" class="hidden">
-            <h1 style="font-size: 30px; letter-spacing: 4px;">PAUSED</h1>
-            <p style="margin: 15px 0; color: #aaa;">
-                ENERGY: <span id="pause-score" style="color:#00ffff;font-weight:bold;">0</span><br>
-                RESONANCE: <span id="pause-combo" style="color:#ffaa00;font-weight:bold;">x1</span><br>
-                DEBRIS: <span id="pause-debris" style="color:#aa66ff;font-weight:bold;">0</span>
-            </p>
-            <button class="menu-btn" id="btn-resume">RESUME</button>
-            <button class="menu-btn" id="btn-quit" style="border-color: #ff4444; color: #ff4444;">QUIT</button>
+
+        <div id="pause-screen" class="hidden" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+            <h1 class="pause-title" id="pause-title">PAUSED</h1>
+            <div class="result-grid">
+                <div class="result-item is-main">
+                    <span class="result-label">ENERGY</span>
+                    <span class="result-value v-energy" id="pause-score">0</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">RESONANCE</span>
+                    <span class="result-value v-combo" id="pause-combo">x1</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">DEBRIS</span>
+                    <span class="result-value v-debris" id="pause-debris">0</span>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="start-btn btn-primary" id="btn-resume" aria-label="ゲームを再開">RESUME</button>
+                <button class="menu-btn btn-secondary btn-danger" id="btn-quit" aria-label="ゲームをやめてタイトルへ戻る">QUIT</button>
+            </div>
         </div>
-        
-        <div id="gameover-screen" class="hidden">
-            <h1 style="font-size:28px;color:#cc4466;text-shadow:0 0 16px rgba(200,50,80,0.5);">SINGULARITY<br>INTERRUPTED</h1>
-            <p id="new-record-msg" style="color:#ffff00;font-weight:bold;font-size:16px;margin:5px 0 0;display:none;">🏆 NEW HIGH SCORE!</p>
-            <p style="font-size: 16px; margin: 14px 0; line-height: 1.8;">
-                ENERGY: <span id="final-score" style="color:#00ffff; font-weight:bold;">0</span><br>
-                <span style="font-size:11px;color:#888;">BEST: <span id="best-score" style="color:#ffaa00;">0</span></span><br>
-                ABSORBED: <span id="final-dist" style="color:#ff00ff; font-weight:bold;">0m</span><br>
-                MAX RESONANCE: <span id="max-combo" style="color:#ffaa00; font-weight:bold;">0</span><br>
-                DESTROYED: <span id="destroyed-count" style="color:#ff0055; font-weight:bold;">0</span><br>
-                DEBRIS AT END: <span id="final-debris" style="color:#aa66ff; font-weight:bold;">0</span>
-            </p>
-            <button class="start-btn" id="btn-retry" style="border-color:#cc4466;color:#cc8899;">RETRY</button>
-            <button class="menu-btn" id="btn-home">HOME</button>
+
+        <div id="gameover-screen" class="hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+            <h1 class="gameover-title" id="gameover-title">SINGULARITY<br>INTERRUPTED</h1>
+            <p id="new-record-msg" class="new-record" style="display:none;" role="status">🏆 NEW HIGH SCORE!</p>
+            <div class="result-grid">
+                <div class="result-item is-main">
+                    <span class="result-label">ENERGY</span>
+                    <span class="result-value v-energy" id="final-score">0</span>
+                    <span class="result-sub">BEST: <span class="result-value v-best" id="best-score">0</span></span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">ABSORBED</span>
+                    <span class="result-value v-dist" id="final-dist">0m</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">MAX RESONANCE</span>
+                    <span class="result-value v-combo" id="max-combo">0</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">DESTROYED</span>
+                    <span class="result-value v-destroy" id="destroyed-count">0</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-label">DEBRIS AT END</span>
+                    <span class="result-value v-debris" id="final-debris">0</span>
+                </div>
+            </div>
+            <div class="btn-row">
+                <button class="start-btn btn-primary btn-gameover" id="btn-retry" aria-label="同じ難易度でもう一度プレイ">RETRY</button>
+                <button class="menu-btn btn-secondary" id="btn-home" aria-label="タイトル画面へ戻る">HOME</button>
+            </div>
+            <p class="hint-line"><kbd>SPACE</kbd> でもリトライできます</p>
         </div>
     </div>
+
+    <!-- プレイ中のみ表示（#menu 表示中は CSS で非表示）。Esc と同じ経路で pauseGame() を呼ぶ -->
+    <button id="btn-pause" type="button" aria-label="ポーズ（Escキーでも可）" title="ポーズ (Esc)"></button>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
@@ -1645,6 +1963,35 @@
     }
 
     init();
+    </script>
+    <script>
+    // ===== UI補助（ゲームロジックには触れない） =====
+    (function () {
+        // ポーズボタン: Escキーと同じ条件・同じ関数 (pauseGame) を使う
+        const pauseBtn = document.getElementById('btn-pause');
+        pauseBtn.addEventListener('click', (e) => {
+            e.stopPropagation();               // document の click(射撃) に伝播させない
+            if (isGameRunning && !isPaused) pauseGame();
+            pauseBtn.blur();
+        });
+        // タッチ: document の touchend より先(ターゲット段階)にポーズする。
+        // これで document 側は isGameRunning=false となり射撃せず、左右キーのリセットは通常どおり走る。
+        // preventDefault で後続の合成 click を抑止（二重処理防止）。
+        pauseBtn.addEventListener('touchend', (e) => {
+            if (isGameRunning && !isPaused) pauseGame();
+            e.preventDefault();
+        }, { passive: false });
+        // ボタンにフォーカスがあっても SPACE はジャンプ用（ボタン押下にしない）
+        const blockSpace = (e) => { if (e.code === 'Space') e.preventDefault(); };
+        pauseBtn.addEventListener('keydown', blockSpace);
+        pauseBtn.addEventListener('keyup', blockSpace);
+
+        // 難易度ボタンの選択状態を支援技術にも伝える（.active の付け替えに追従）
+        const diffBtns = document.querySelectorAll('.diff-btn');
+        diffBtns.forEach(b => b.addEventListener('click', () => {
+            diffBtns.forEach(x => x.setAttribute('aria-pressed', x.classList.contains('active') ? 'true' : 'false'));
+        }));
+    })();
     </script>
 </body>
 </html>
