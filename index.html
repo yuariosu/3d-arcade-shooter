@@ -409,6 +409,14 @@
             opacity: 0;
             transition: opacity 0.12s ease-out;
         }
+        /* 次元シフト（プラットフォーム突入）用フラッシュ */
+        #dimension-flash {
+            position: fixed; inset: 0; z-index: 198;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, rgba(120, 240, 255, 0.10) 0%, rgba(0, 150, 255, 0.30) 100%);
+            opacity: 0;
+            transition: opacity 0.22s ease-out;
+        }
 
         /* コンステレーションHUD */
         #constellation-hud {
@@ -428,6 +436,14 @@
         #constellation-hud.stage-3 { border-color: #ffaa00; box-shadow: 0 0 16px rgba(255,170,0,0.5); }
         #constellation-hud.stage-4 { border-color: #ff3366; box-shadow: 0 0 24px rgba(255,51,102,0.7); animation: singularity-pulse 0.8s infinite; }
         @keyframes singularity-pulse { 0%,100%{box-shadow:0 0 20px rgba(255,51,102,0.7)} 50%{box-shadow:0 0 40px rgba(255,51,102,1)} }
+        /* 上層次元滞在中のみ表示 */
+        #dimension-tag {
+            margin-top: 4px; padding-top: 4px;
+            border-top: 1px solid rgba(102, 224, 255, 0.35);
+            font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 600;
+            letter-spacing: 0.14em; color: #66e0ff;
+            text-shadow: 0 0 6px rgba(0, 200, 255, 0.7);
+        }
 
         /* singularity-title: 通常h1スタイルと同じ（上書き不要） */
         .singularity-title { }
@@ -474,6 +490,7 @@
             /* 画面全体のフラッシュを弱める */
             #damage-flash { background: rgba(255, 0, 50, 0.28); }
             #coin-flash { background: rgba(255, 255, 0, 0.08); }
+            #dimension-flash { background: rgba(0, 170, 255, 0.08); }
         }
     </style>
 </head>
@@ -498,6 +515,7 @@
         <div id="const-label">CONSTELLATION</div>
         <div id="const-count">0</div>
         <div id="const-stage-name">—</div>
+        <div id="dimension-tag" class="hidden">DIMENSION: UPPER</div>
     </div>
 
     <div id="cooldown-container" class="hidden">
@@ -513,6 +531,7 @@
 
     <div id="damage-flash"></div>
     <div id="coin-flash"></div>
+    <div id="dimension-flash"></div>
 
     <div id="powerups">
         <div id="powerup-shield" class="powerup-slot hidden" style="border-color:#00aaff;" aria-label="シールド有効">
@@ -725,6 +744,28 @@
     let constellationStage = 0, prevConstellationStage = -1;
     let singularityTimer = 0;
 
+    // ===== 次元シフト演出（見た目のみ。移動・判定・スコアには一切関与しない）=====
+    let dimPrevRiding = null;      // 前フレームの ridingBlock（中央監視用）
+    let inUpperDimension = false;  // 上層次元に滞在中か（演出状態）
+    let dimLastRideY = 0;          // 最後に乗っていたプラットフォーム上のプレイヤーY
+    const DIM_EXIT_DROP = 0.5;     // 離脱後この量だけ下がったら「帰還」確定（同じ板でのジャンプ再着地では帰還させない）
+    let dimBlend = 0;              // 0=地上 / 1=上層（時間ベースで滑らかに追従）
+    let dimFovKick = 0;            // 突入時の一時的なFOV加算
+    let dimLastTime = 0;
+    let camBaseRotX = 0;           // init の lookAt 後のカメラ俯角
+    const CAM_BASE_FOV = 60;
+    const DIM_FOV_STAY = 3;        // 滞在中の常時FOV加算
+    const DIM_CAM_Y_OFFSET = 0.8;  // 滞在中のカメラY加算
+    const DIM_CAM_TILT = 0.035;    // 滞在中の追加俯角（rad）
+    const DIM_BLEND_TAU = 0.07;    // 遷移の時定数（秒）≒0.2秒で95%
+    const UPPER_DIM_BG = new THREE.Color(0x03203a);    // 上層次元の背景・霧
+    const UPPER_DIM_STAR = new THREE.Color(0x66e0ff);  // 上層次元の星色
+    const _dimTmpColor = new THREE.Color();
+    const _starBaseColor = new THREE.Color(0xffffff);
+    const reducedMotionMQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    function prefersReducedMotion() { return !!(reducedMotionMQ && reducedMotionMQ.matches); }
+    let platPillarGeo = null, platRingGeo = null;     // プラットフォーム目印の共有ジオメトリ
+
     const settings = {
         easy:   { speed: 0.18, max: 0.45, obstRate: 40, itemRate: 100, coinRate: 70,  accel: 0.0001, multiSpawn: 0.20, maxMulti: 2, enemyShootInterval: 0,  maxEnemyBullets: 0, shootChance: 0.00, bulletSpeed: 0.50 },
         normal: { speed: 0.28, max: 0.70, obstRate: 28, itemRate: 180, coinRate: 100, accel: 0.0005, multiSpawn: 0.40, maxMulti: 2, enemyShootInterval: 0,  maxEnemyBullets: 0, shootChance: 0.00, bulletSpeed: 0.50 },
@@ -820,6 +861,14 @@
                 playTone(200, 0.04, 0.18, 'square');
                 playTone(120, 0.07, 0.12, 'square');
                 break;
+            case 'warp':      // 上層次元への突入：上昇スイープ
+                playTone(180, 0.45, 0.16, 'sawtooth', 1500);
+                setTimeout(() => playTone(440, 0.35, 0.12, 'sine', 2400), 60);
+                break;
+            case 'warp-out':  // 地上への帰還：下降スイープ
+                playTone(1200, 0.35, 0.14, 'sawtooth', 160);
+                setTimeout(() => playTone(900, 0.3, 0.1, 'sine', 140), 40);
+                break;
         }
     }
 
@@ -831,6 +880,7 @@
         camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 150);
         camera.position.set(0, 3, 7);
         camera.lookAt(0, 0, -5);
+        camBaseRotX = camera.rotation.x;
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -952,6 +1002,8 @@
         platforms = []; bonusCoins = []; platformSpawnTimer = 0;
         constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
 
+        resetDimensionState();
+
         // 宇宙の雰囲気をリセット
         scene.background.setHex(0x050505);
         if (scene.fog) scene.fog.color.setHex(0x050505);
@@ -996,6 +1048,7 @@
         platforms = []; bonusCoins = []; platformSpawnTimer = 0;
         constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
         ridingBlock = null;
+        resetDimensionState();
         scene.background.setHex(0x050505);
         if (scene.fog) scene.fog.color.setHex(0x050505);
     }
@@ -1108,6 +1161,41 @@
         // 縁のエッジライン
         const edgeMat = new THREE.LineBasicMaterial({ color: 0x33ddff });
         plat.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat));
+
+        // ===== 目印（演出のみ）: 縦の光の柱 + 上面の脈動リング =====
+        // ジオメトリは全プラットフォームで共有（生成コスト・メモリを抑える）
+        const PILLAR_H = 16;
+        if (!platPillarGeo) {
+            platPillarGeo = new THREE.CylinderGeometry(1.4, 1.4, PILLAR_H, 20, 1, true);
+            // 頂点カラーで下→上へフェード（加算合成なので黒=透明）
+            const pAttr = platPillarGeo.attributes.position;
+            const cols = new Float32Array(pAttr.count * 3);
+            for (let v = 0; v < pAttr.count; v++) {
+                const t = (pAttr.getY(v) + PILLAR_H / 2) / PILLAR_H; // 0=下端, 1=上端
+                const k = Math.pow(1 - t, 1.6);
+                cols[v * 3] = 0.25 * k; cols[v * 3 + 1] = 0.85 * k; cols[v * 3 + 2] = 1.0 * k;
+            }
+            platPillarGeo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+            platRingGeo = new THREE.RingGeometry(2.2, 2.6, 48);
+        }
+        const pillarMat = new THREE.MeshBasicMaterial({
+            vertexColors: true, transparent: true, opacity: 0.35,
+            blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+        });
+        const pillar = new THREE.Mesh(platPillarGeo, pillarMat);
+        pillar.position.y = PH / 2 + PILLAR_H / 2;
+        plat.add(pillar);
+
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0x66eeff, transparent: true, opacity: 0.6,
+            blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(platRingGeo, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = PH / 2 + 0.03;
+        plat.add(ring);
+        plat.userData.dimPillar = pillar;  // 演出用参照（判定には未使用）
+        plat.userData.dimRing = ring;
 
         scene.add(plat);
         platforms.push(plat);
@@ -1433,8 +1521,115 @@
         const stage = constellationStage;
         // 暗い宇宙 → 深紫 → 紫 → マゼンタ → 深紅（特異点）
         const bgColors = [0x050505, 0x0a0520, 0x130830, 0x200535, 0x280210];
-        scene.background.setHex(bgColors[stage]);
-        if (scene.fog) scene.fog.color.setHex(bgColors[stage]);
+        // 上層次元滞在中は、コンステレーション色を基準に上層パレットへ dimBlend 分だけ寄せる
+        _dimTmpColor.setHex(bgColors[stage]);
+        if (dimBlend > 0.001) _dimTmpColor.lerp(UPPER_DIM_BG, dimBlend);
+        scene.background.copy(_dimTmpColor);
+        if (scene.fog) scene.fog.color.copy(_dimTmpColor);
+    }
+
+    // ===== 次元シフト：ridingBlock の中央監視 =====
+    // 着地・ジャンプ離脱・落下・プラットフォーム消滅・ゲームオーバー等、
+    // ridingBlock を変える全経路をここで前フレームとの比較により一括検出する。
+    function updateDimensionShift() {
+        if (!isGameRunning) {
+            if (isPaused) return;                 // ポーズ中は状態を凍結
+            // ゲームオーバー／タイトル: 演出なしで静かに地上へ戻す
+            if (inUpperDimension) { inUpperDimension = false; setDimensionHUD(false); }
+            dimPrevRiding = null;
+            return;
+        }
+        const cur = ridingBlock;
+        if (cur) {
+            dimLastRideY = cur.position.y + cur.userData.height / 2 + 0.4;
+            // null→非null：突入（既に上層にいる＝同じ板への再着地や板の乗り継ぎでは再発火しない）
+            if (!dimPrevRiding && !inUpperDimension) enterUpperDimension();
+        } else if (inUpperDimension && player.position.y < dimLastRideY - DIM_EXIT_DROP) {
+            // 非null→null の後、板の高さから明確に落ちた時点で帰還を1回だけ確定
+            exitUpperDimension();
+        }
+        dimPrevRiding = cur;
+    }
+
+    function enterUpperDimension() {
+        inUpperDimension = true;
+        // 着地直前の「PLATFORM! +200」を上書きしないよう、メッセージだけ少し遅らせる
+        setTimeout(() => { if (inUpperDimension) showMessage('DIMENSION SHIFT', 1100); }, 550);
+        triggerDimensionFlash();
+        playSound('warp');
+        dimFovKick = prefersReducedMotion() ? 3 : 12;
+        setDimensionHUD(true);
+    }
+
+    function exitUpperDimension() {
+        inUpperDimension = false;
+        playSound('warp-out');
+        setDimensionHUD(false);
+    }
+
+    // ゲーム開始/ホーム復帰時：演出状態と見た目を即座に地上へ戻す
+    function resetDimensionState() {
+        dimPrevRiding = null;
+        inUpperDimension = false;
+        dimBlend = 0;
+        dimFovKick = 0;
+        setDimensionHUD(false);
+    }
+
+    function setDimensionHUD(on) {
+        const el = document.getElementById('dimension-tag');
+        if (el) el.classList.toggle('hidden', !on);
+    }
+
+    function triggerDimensionFlash() {
+        const el = document.getElementById('dimension-flash');
+        el.style.opacity = '1';
+        setTimeout(() => { el.style.opacity = '0'; }, 160);
+    }
+
+    // 毎フレーム（animate から）：ブレンド・FOV・星色・プラットフォーム目印を更新
+    function updateDimensionVisuals() {
+        const now = performance.now();
+        const dt = dimLastTime ? Math.min(0.1, (now - dimLastTime) / 1000) : 1 / 60;
+        dimLastTime = now;
+
+        const target = inUpperDimension ? 1 : 0;
+        dimBlend += (target - dimBlend) * (1 - Math.exp(-dt / DIM_BLEND_TAU));
+        if (Math.abs(target - dimBlend) < 0.001) dimBlend = target;
+        dimFovKick *= Math.exp(-dt / 0.18);
+        if (dimFovKick < 0.01) dimFovKick = 0;
+
+        // 非プレイ中は update() から呼ばれないため、ここで背景色を追従させる
+        if (!isGameRunning && !isPaused) updateCosmicAtmosphere();
+
+        const fov = CAM_BASE_FOV + DIM_FOV_STAY * dimBlend + dimFovKick;
+        if (Math.abs(camera.fov - fov) > 0.001) {
+            camera.fov = fov;
+            camera.updateProjectionMatrix();
+        }
+        camera.rotation.x = camBaseRotX - DIM_CAM_TILT * dimBlend;
+
+        if (stars) {
+            stars.material.color.copy(_starBaseColor).lerp(UPPER_DIM_STAR, dimBlend);
+            stars.material.size = 0.15 + 0.06 * dimBlend;
+        }
+
+        // プラットフォーム目印：リング脈動、柱は手前に来るほどフェード（視界を塞がない）
+        const t = now * 0.001;
+        const pulse = prefersReducedMotion() ? 0.5 : 0.5 + 0.5 * Math.sin(t * 4);
+        for (const plat of platforms) {
+            const ud = plat.userData;
+            if (ud.dimRing) {
+                const s = 1 + 0.14 * pulse;
+                ud.dimRing.scale.set(s, s, 1);
+                ud.dimRing.material.opacity = 0.3 + 0.4 * pulse;
+            }
+            if (ud.dimPillar) {
+                const fade = Math.max(0, Math.min(1, (-plat.position.z - 4) / 18));
+                ud.dimPillar.material.opacity = 0.35 * fade;
+                ud.dimPillar.visible = fade > 0.01;
+            }
+        }
     }
 
     function updateParticles() {
@@ -1461,6 +1656,7 @@
             if (shootCooldown === 0) canShoot = true;
         }
         updateCooldownUI();
+        updateDimensionShift();   // 次元シフト中央監視（演出のみ）
 
         if (!isGameRunning) return;
 
@@ -1965,16 +2161,18 @@
     function animate() {
         requestAnimationFrame(animate);
         update();
+        updateDimensionVisuals();
 
-        // スクリーンシェイク
+        // スクリーンシェイク（上層次元のYオフセットは基準位置に加算するだけ）
+        const camY = CAM_BASE_Y + DIM_CAM_Y_OFFSET * dimBlend;
         if (shakeAmount > 0.005) {
             const t = Date.now() * 0.05;
             camera.position.x = CAM_BASE_X + Math.sin(t * 1.7) * shakeAmount;
-            camera.position.y = CAM_BASE_Y + Math.cos(t * 2.3) * shakeAmount;
+            camera.position.y = camY + Math.cos(t * 2.3) * shakeAmount;
             shakeAmount *= 0.82;
         } else {
             camera.position.x = CAM_BASE_X;
-            camera.position.y = CAM_BASE_Y;
+            camera.position.y = camY;
             shakeAmount = 0;
         }
 
