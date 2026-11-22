@@ -694,6 +694,13 @@
     const ENEMY_BULLET_MAT = new THREE.MeshBasicMaterial({ color: 0xff00aa });
     const PLAYER_BULLET_GEO = new THREE.SphereGeometry(0.18, 7, 7);
     const PLAYER_BULLET_MAT = new THREE.MeshBasicMaterial({ color: 0xff3366 });
+    // 爆発：粒子は形状・色を共有（色は2種）。フラッシュは不透明度を個別に変えるのでマテリアルだけ毎回生成
+    const EXPLOSION_PARTICLE_GEO = new THREE.SphereGeometry(0.1, 8, 8);
+    const EXPLOSION_PARTICLE_MATS = [
+        new THREE.MeshBasicMaterial({ color: 0xff0055 }),
+        new THREE.MeshBasicMaterial({ color: 0xffaa00 })
+    ];
+    const EXPLOSION_FLASH_GEO = new THREE.SphereGeometry(0.35, 10, 10);
     // デブリ：低ポリ二十面体（全デブリで形状を共有、色だけ変える）
     const DEBRIS_GEO = new THREE.IcosahedronGeometry(0.13, 0);
     const DEBRIS_COLORS = [0xff6600, 0xffaa00, 0xff3366, 0xaa44ff, 0x00ffcc, 0xffffff, 0x8844ff, 0xff0088];
@@ -733,6 +740,13 @@
     let canShoot = true;
     let shootCooldown = 0;
     const SHOOT_COOLDOWN_MAX = 15;
+    // 押しっぱなし連射：押下中フラグ（発射間隔は shoot() の canShoot ガード＝SHOOT_COOLDOWN_MAX で制限）
+    const fireKeysHeld = { KeyW: false, ArrowUp: false };
+    let mouseFireHeld = false;
+    let lastTouchTime = -Infinity;   // タッチ由来の合成マウスイベントを射撃に使わないための時刻
+    // ヒットストップ：弾で障害物を破壊した瞬間にゲーム更新を止めるフレーム数（描画は継続）
+    const HITSTOP_FRAMES = 2;
+    let hitstopTimer = 0;
 
     let activeShield = false, activeBoost = false, activeSlow = false;
     let boostTimer = 0, slowTimer = 0;
@@ -934,6 +948,12 @@
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
         document.addEventListener('click', onMouseClick);
+        document.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mouseup', onMouseUp);
+        window.addEventListener('blur', onWindowBlur);
+        // タッチ時刻の記録のみ（タッチ操作自体は initTouchControls のまま）
+        document.addEventListener('touchstart', () => { lastTouchTime = performance.now(); }, { passive: true, capture: true });
+        document.addEventListener('touchend', () => { lastTouchTime = performance.now(); }, { passive: true, capture: true });
         window.addEventListener('resize', onResize);
         initTouchControls();
         
@@ -1013,6 +1033,7 @@
         spawnTimer = 0; itemSpawnTimer = 0;
         activeShield = false; activeBoost = false; activeSlow = false;
         canShoot = true; shootCooldown = 0;
+        resetShootFeel();
 
         const cfg = settings[difficulty];
         gameSpeed = cfg.speed;
@@ -1064,6 +1085,7 @@
 
     function quitToHome() {
         isGameRunning = false; isPaused = false;
+        resetShootFeel();
         hideAllScreens();
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('start-screen').classList.remove('hidden');
@@ -1378,6 +1400,7 @@
                     spawnDebris(obs.position);       // 破壊 → 破片が軌道に乗る
                     playSound('explode');
                     triggerShake(0.12);
+                    triggerHitstop();                // 弾による障害物破壊のみ
                     scene.remove(obs);
                     obstacles.splice(j, 1);
 
@@ -1462,10 +1485,20 @@
     }
 
     function createExplosion(position) {
-        for (let i = 0; i < 8; i++) {
-            const geo = new THREE.SphereGeometry(0.1, 8, 8);
-            const mat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xff0055 : 0xffaa00 });
-            const particle = new THREE.Mesh(geo, mat);
+        // 中心フラッシュ：加算ブレンドの球が一瞬広がって消える（PointLight は使わない）
+        const flashMat = new THREE.MeshBasicMaterial({
+            color: 0xffe0b0, transparent: true, opacity: 0.9,
+            blending: THREE.AdditiveBlending, depthWrite: false
+        });
+        const flash = new THREE.Mesh(EXPLOSION_FLASH_GEO, flashMat);
+        flash.position.copy(position);
+        flash.userData = { vx: 0, vy: 0, vz: 0, life: 6, maxLife: 6, isFlash: true };
+        scene.add(flash);
+        particles.push(flash);
+
+        for (let i = 0; i < 12; i++) {
+            const mat = EXPLOSION_PARTICLE_MATS[Math.random() > 0.5 ? 0 : 1];
+            const particle = new THREE.Mesh(EXPLOSION_PARTICLE_GEO, mat);
             particle.position.copy(position);
             particle.userData = {
                 vx: (Math.random() - 0.5) * 0.3,
@@ -1753,14 +1786,27 @@
             p.position.z += p.userData.vz;
             p.userData.life--;
 
+            if (p.userData.isFlash) {
+                const k = Math.max(0, p.userData.life / p.userData.maxLife);   // 1 → 0
+                p.scale.setScalar(1 + (1 - k) * 2.2);
+                p.material.opacity = 0.9 * k;
+            }
+
             if (p.userData.life <= 0) {
                 scene.remove(p);
+                if (p.userData.isFlash) p.material.dispose();
                 particles.splice(i, 1);
             }
         }
     }
 
     function update() {
+        // ヒットストップ中はゲーム更新だけ止める（描画・カメラシェイクは animate 側で継続）
+        if (hitstopTimer > 0) {
+            hitstopTimer--;
+            return;
+        }
+
         const idleSpeed = 0.08;
         updateGridLoop(isGameRunning ? (activeSlow ? gameSpeed * 0.5 : gameSpeed) : idleSpeed);
 
@@ -1768,6 +1814,8 @@
             shootCooldown--;
             if (shootCooldown === 0) canShoot = true;
         }
+        // 押しっぱなし連射：クールダウンが明けたフレームで自動発射（間隔は canShoot ガードで従来どおり）
+        if (isGameRunning && !isPaused && isFireHeld()) shoot();
         updateCooldownUI();
         updateDimensionShift();   // 次元シフト中央監視（演出のみ）
 
@@ -2149,6 +2197,23 @@
         shakeAmount = Math.max(shakeAmount, amount);
     }
 
+    // 再突入では加算せず残りとの max。reduced-motion 時は無効（0のまま）
+    function triggerHitstop() {
+        if (prefersReducedMotion()) return;
+        hitstopTimer = Math.max(hitstopTimer, HITSTOP_FRAMES);
+    }
+
+    function isFireHeld() {
+        return fireKeysHeld.KeyW || fireKeysHeld.ArrowUp || mouseFireHeld;
+    }
+
+    // 射撃中フラグとヒットストップを解除（状態遷移・フォーカス喪失時）
+    function resetShootFeel() {
+        fireKeysHeld.KeyW = false; fireKeysHeld.ArrowUp = false;
+        mouseFireHeld = false;
+        hitstopTimer = 0;
+    }
+
     function triggerDamageFlash() {
         const el = document.getElementById('damage-flash');
         el.style.opacity = '1';
@@ -2180,6 +2245,7 @@
     function gameOver() {
         playSound('gameover');
         isGameRunning = false;
+        resetShootFeel();
         ridingBlock = null;
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('gameover-screen').classList.remove('hidden');
@@ -2206,7 +2272,13 @@
 
         if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
         if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
-        if (e.code === 'KeyW' || e.code === 'ArrowUp') shoot();
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') {
+            // OSのキーリピートは無視し、押下状態だけで連射する（押した瞬間は即1発）
+            if (!e.repeat && isGameRunning) {
+                fireKeysHeld[e.code] = true;
+                shoot();
+            }
+        }
         if (e.code === 'Space') {
             if (!isJumping && isGameRunning) {
                 ridingBlock = null;   // ブロックから離脱
@@ -2223,10 +2295,33 @@
     function onKeyUp(e) {
         if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
         if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+        if (e.code === 'KeyW' || e.code === 'ArrowUp') fireKeysHeld[e.code] = false;
     }
 
+    // マウス射撃は mousedown/mouseup で扱う（押しっぱなし連射）。
+    // click では撃たない（mousedown で既に撃っているため。タッチはタップ射撃のまま touchend 側）
     function onMouseClick(e) {
-        if (isGameRunning) shoot();
+    }
+
+    function onMouseDown(e) {
+        if (e.button !== 0) return;
+        // タッチ直後の合成 mousedown は無視（タッチ操作は従来どおり）
+        if (performance.now() - lastTouchTime < 1000) return;
+        // ボタン類（ポーズボタン等）の操作は射撃にしない
+        if (e.target && e.target.closest && e.target.closest('button, a, input, select, label')) return;
+        if (!isGameRunning) return;
+        mouseFireHeld = true;
+        shoot();
+    }
+
+    function onMouseUp(e) {
+        if (e.button === 0) mouseFireHeld = false;
+    }
+
+    function onWindowBlur() {
+        // フォーカスを失うと keyup/mouseup が届かないので押下状態を解除
+        fireKeysHeld.KeyW = false; fireKeysHeld.ArrowUp = false;
+        mouseFireHeld = false;
     }
 
     function initTouchControls() {
