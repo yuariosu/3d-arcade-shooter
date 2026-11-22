@@ -569,6 +569,7 @@
                     3回連続で避けるごとに <strong>RESONANCE（倍率）</strong>が上がり（最大x10）、ギリギリの回避はニアミスボーナス。
                     壊した残骸は周囲を周回し、数が増えるほど強力に。<strong>ぶつかるとゲームオーバー</strong>。
                     空中の階段を登ってメイン板に乗ると<strong>別次元（上層）</strong>へ。上層では<strong>スコア x1.5</strong>、滞在中は滞在ボーナスも入る。
+                    ステップ1・2の両方を踏んでからメイン板に乗ると<strong>フルステップボーナス</strong>で着地ボーナスが2倍。
                 </p>
                 <div class="howto-cols">
                     <div>
@@ -773,6 +774,12 @@
     const reducedMotionMQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
     function prefersReducedMotion() { return !!(reducedMotionMQ && reducedMotionMQ.matches); }
     let platPillarGeo = null, platRingGeo = null;     // プラットフォーム目印の共有ジオメトリ
+    let stairRailGeo = null, stairRailMat = null;     // 階段の斜めレール（共有）
+    let stairGroupSeq = 0;                            // 階段グループID の採番
+    // 出現時のせり上がり（フレーム単位。ゲームループは1フレーム=約1/60秒）
+    const RISE_FRAMES = 24;        // 約0.4秒
+    const RISE_STAGGER = 7;        // 約0.12秒ずつ遅らせる（ステップ1→ステップ2→メイン板）
+    const RISE_DEPTH = 2.5;        // 目標Yからどれだけ下から始めるか
 
     // ===== 上層（inUpperDimension 中）のルール =====
     const UPPER_SCORE_MULT = 1.5;        // 上層でのスコア倍率
@@ -1237,15 +1244,43 @@
         // ===== 階段（メイン板の手前＝プレイヤー側に2段）=====
         // メイン板と同じ platforms 配列に入れ、移動・着地・消滅は既存ループで一括処理。
         // 全段が同速度で流れるため z オフセットは固定のまま保たれる。
-        const STEP_D = 2.8;   // 各段の奥行き
+        const STEP_D = 4.2;   // 各段の奥行き
         const STEP_H = 0.6;   // 各段の板厚
+        const STEP_RISE = 1.0; // 段差（ステップ1→2→メイン板で各 1.0 上がる）
         const steps = [
             { idx: 1, top: 1.0, w: 6.0, base: 0x04080e, emis: 0x0068cc, topColor: 0x3aa8ff, edge: 0x2fc8ff },
             { idx: 2, top: 2.0, w: 7.0, base: 0x040a10, emis: 0x0099dd, topColor: 0x55ddff, edge: 0x44eeff }
         ];
-        const mainFrontZ = plat.position.z + PD / 2;   // メイン板の手前端
+        const groupId = ++stairGroupSeq;
+        const groupSteps = [];
+        const reduceMotion = prefersReducedMotion();
+        // せり上がり：目標Yを保存し、下から開始（reduced-motion 時は即座に目標Y）
+        const initRise = (mesh, order) => {
+            mesh.userData.baseY = mesh.position.y;
+            mesh.userData.riseDelay = order * RISE_STAGGER;
+            mesh.userData.riseT = reduceMotion ? mesh.userData.riseDelay + RISE_FRAMES : 0;
+            if (!reduceMotion) mesh.position.y = mesh.userData.baseY - RISE_DEPTH;
+        };
+        plat.userData.groupId = groupId;
+        plat.userData.groupSteps = groupSteps;   // 自グループのステップ参照（フルステップ判定用）
+        initRise(plat, 2);
+
+        // 斜めレール（共有ジオメトリ）：各段の手前上端→次の段の手前上端を結ぶ。
+        // 全段で勾配が同じ（1.0 / 4.2）なので、段ごとのセグメントが1本の斜線につながって見える。
+        if (!stairRailGeo) {
+            stairRailGeo = new THREE.BoxGeometry(0.1, 0.1, Math.hypot(STEP_D, STEP_RISE));
+            stairRailMat = new THREE.MeshBasicMaterial({
+                color: 0x44f0ff, transparent: true, opacity: 0.9,
+                blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+            });
+        }
+        const RAIL_X = 3.65;      // メイン板（幅8）の内側、ステップ外側に沿わせる
+        const RAIL_LIFT = 0.12;   // 上面から少し浮かせる
+
+        const mainFrontZ = plat.position.z + PD / 2;   // メイン板の手前端（z=-52）
         for (const s of steps) {
-            // 2段目がメイン板に接し、1段目がさらにその手前に接する
+            // 2段目がメイン板の手前端に接し、1段目がさらにその手前に接する（隙間なし）
+            // ステップ2: z ∈ [-47.8, -52] 中心 -49.9 / ステップ1: z ∈ [-43.6, -47.8] 中心 -45.7
             const z = mainFrontZ + STEP_D * (steps.length - s.idx) + STEP_D / 2;
             const sGeo = new THREE.BoxGeometry(s.w, STEP_H, STEP_D);
             const sMat = new THREE.MeshStandardMaterial({
@@ -1253,7 +1288,10 @@
             });
             const step = new THREE.Mesh(sGeo, sMat);
             step.position.set(0, s.top - STEP_H / 2, z);
-            step.userData = { width: s.w, height: STEP_H, depth: STEP_D, isPlatform: true, kind: 'step', stepIndex: s.idx };
+            step.userData = {
+                width: s.w, height: STEP_H, depth: STEP_D, isPlatform: true, kind: 'step', stepIndex: s.idx,
+                groupId, stepVisited: false   // 踏破状態はステップ単位で記録（再着地での二重加算防止も兼ねる）
+            };
             step.castShadow = true;
 
             const stTop = new THREE.Mesh(
@@ -1263,10 +1301,22 @@
             stTop.rotation.x = -Math.PI / 2;
             stTop.position.y = STEP_H / 2 + 0.01;
             step.add(stTop);
+            step.userData.topMesh = stTop;
             step.add(new THREE.LineSegments(new THREE.EdgesGeometry(sGeo), new THREE.LineBasicMaterial({ color: s.edge })));
 
+            // 左右の斜めレール（この段の手前上端 → 次の段の手前上端）。段の子要素なので移動・消滅は段と一緒。
+            const railAngle = Math.atan2(STEP_RISE, STEP_D);
+            for (const side of [-1, 1]) {
+                const rail = new THREE.Mesh(stairRailGeo, stairRailMat);
+                rail.position.set(side * RAIL_X, STEP_H / 2 + RAIL_LIFT + STEP_RISE / 2, 0);
+                rail.rotation.x = railAngle;   // ローカル +z（手前）ほど低く、-z（奥）ほど高く
+                step.add(rail);
+            }
+
+            initRise(step, s.idx - 1);
             scene.add(step);
             platforms.push(step);
+            groupSteps.push(step);
         }
 
         // ボーナスコイン5枚をプラットフォーム上に配置
@@ -1681,12 +1731,32 @@
     }
 
     function showUpperBonus(n) {
+        showSmallMsg(`UPPER BONUS +${n.toLocaleString()}`);
+    }
+
+    // HUD 内の小さいメッセージ（#upper-bonus-msg）を約0.7秒表示
+    function showSmallMsg(text) {
         const el = document.getElementById('upper-bonus-msg');
         if (!el) return;
-        el.textContent = `UPPER BONUS +${n.toLocaleString()}`;
+        el.textContent = text;
         el.style.opacity = '1';
         clearTimeout(upperBonusMsgTimer);
         upperBonusMsgTimer = setTimeout(() => { el.style.opacity = '0'; }, 700);
+    }
+
+    // 踏んだステップを明るい発光状態に固定（階段が消えるまで維持。材質は段ごとに個別）
+    function litStep(step) {
+        const top = step.userData.topMesh;
+        if (top) {
+            top.material.color.setHex(0xbff8ff);
+            top.material.opacity = 0.85;
+            top.material.blending = THREE.AdditiveBlending;
+            top.material.needsUpdate = true;
+        }
+        if (step.material && step.material.emissive) {
+            step.material.emissive.setHex(0x22ccff);
+            step.material.emissiveIntensity = 1.2;
+        }
     }
 
     function setDimensionHUD(on) {
@@ -1947,6 +2017,16 @@
             const plat = platforms[i];
             plat.position.z += effectiveSpeed;
 
+            // 出現時のせり上がり（見た目のみ。位置は実際に動かすので判定・ライディングは常に現在Yで一貫する）
+            const rud = plat.userData;
+            if (rud.baseY !== undefined && rud.riseT < rud.riseDelay + RISE_FRAMES) {
+                rud.riseT++;
+                const k = Math.max(0, Math.min(1, (rud.riseT - rud.riseDelay) / RISE_FRAMES));
+                const ease = 1 - Math.pow(1 - k, 3);   // easeOutCubic
+                plat.position.y = rud.baseY - RISE_DEPTH * (1 - ease);
+                if (k >= 1) plat.position.y = rud.baseY;
+            }
+
             const pw = plat.userData.width / 2;   // 2.5
             const ph = plat.userData.height / 2;   // 0.3
             const pdx = Math.abs(player.position.x - plat.position.x);
@@ -1955,7 +2035,7 @@
             const pBottom  = player.position.y - 0.4;
             const prevPBottom = prevPlayerY - 0.4;
 
-            // 上面着地判定：奥行き依存のウィンドウ（メイン板 depth 12 → 7.0 で従来どおり、ステップ depth 2.8 → 2.4）
+            // 上面着地判定：奥行き依存のウィンドウ（メイン板 depth 12 → 7.0 で従来どおり、ステップ depth 4.2 → 3.1）
             const pdzWindow = plat.userData.depth / 2 + 1.0;
             if (plat !== ridingBlock
                 && velocityY <= 0.05
@@ -1968,18 +2048,45 @@
                 velocityY = 0;
                 isJumping = false;
                 if (plat.userData.kind === 'step') {
-                    // ステップ：スコアなし、段に応じて音程が上がる着地音のみ
+                    // ステップ：段に応じて音程が上がる着地音 + 初回着地のみスコア（combo倍率なし）
                     playSound('step', plat.userData.stepIndex);
+                    if (!plat.userData.stepVisited) {
+                        plat.userData.stepVisited = true;
+                        litStep(plat);
+                        const base = plat.userData.stepIndex === 1 ? 50 : 100;
+                        addScore(base);
+                        showSmallMsg(`STEP ${plat.userData.stepIndex} +${base}`);
+                    }
                 } else {
                     playSound('land');
-                    showMessage('PLATFORM! +200', 900);
-                    addScore(200 * combo);
+                    const gs = plat.userData.groupSteps;
+                    const fullSteps = !plat.userData.fullAwarded && gs && gs.length === 2
+                        && gs.every(st => st && st.userData.stepVisited && st.userData.groupId === plat.userData.groupId);
+                    if (fullSteps) {
+                        plat.userData.fullAwarded = true;   // 同じ板への再着地は通常扱い
+                        const added = addScore(400 * combo);
+                        showMessage(`FULL STEPS! PLATFORM +${added.toLocaleString()}`, 900);
+                    } else {
+                        showMessage('PLATFORM! +200', 900);
+                        addScore(200 * combo);
+                    }
                 }
             }
 
             if (plat.position.z > 10) {
                 scene.remove(plat);
                 platforms.splice(i, 1);
+                if (plat.userData.kind === 'step') {
+                    // 踏破記録の掃除：ステップ単位の記録を消し、メイン板側の参照からも外す
+                    plat.userData.stepVisited = false;
+                    for (const p of platforms) {
+                        const g = p.userData.groupSteps;
+                        if (g && p.userData.groupId === plat.userData.groupId) {
+                            const j = g.indexOf(plat);
+                            if (j >= 0) g.splice(j, 1);
+                        }
+                    }
+                }
                 if (ridingBlock === plat) ridingBlock = null;
             }
         }
