@@ -444,6 +444,12 @@
             letter-spacing: 0.14em; color: #66e0ff;
             text-shadow: 0 0 6px rgba(0, 200, 255, 0.7);
         }
+        /* 上層の滞在ボーナス：中央メッセージを奪わないよう HUD 内に小さく表示 */
+        #upper-bonus-msg {
+            font-family: 'Orbitron', monospace; font-size: 10px; font-weight: 700;
+            letter-spacing: 0.1em; color: #aaf4ff; min-height: 12px;
+            opacity: 0; transition: opacity 0.25s;
+        }
 
         /* singularity-title: 通常h1スタイルと同じ（上書き不要） */
         .singularity-title { }
@@ -515,7 +521,8 @@
         <div id="const-label">CONSTELLATION</div>
         <div id="const-count">0</div>
         <div id="const-stage-name">—</div>
-        <div id="dimension-tag" class="hidden">DIMENSION: UPPER</div>
+        <div id="dimension-tag" class="hidden">DIMENSION: UPPER x1.5</div>
+        <div id="upper-bonus-msg" aria-hidden="true"></div>
     </div>
 
     <div id="cooldown-container" class="hidden">
@@ -561,6 +568,7 @@
                     迫る障害物を<strong>避けるか撃ち壊して</strong>進み、<strong>ENERGY（スコア）</strong>を稼ごう。
                     3回連続で避けるごとに <strong>RESONANCE（倍率）</strong>が上がり（最大x10）、ギリギリの回避はニアミスボーナス。
                     壊した残骸は周囲を周回し、数が増えるほど強力に。<strong>ぶつかるとゲームオーバー</strong>。
+                    空中の階段を登ってメイン板に乗ると<strong>別次元（上層）</strong>へ。上層では<strong>スコア x1.5</strong>、滞在中は滞在ボーナスも入る。
                 </p>
                 <div class="howto-cols">
                     <div>
@@ -766,6 +774,23 @@
     function prefersReducedMotion() { return !!(reducedMotionMQ && reducedMotionMQ.matches); }
     let platPillarGeo = null, platRingGeo = null;     // プラットフォーム目印の共有ジオメトリ
 
+    // ===== 上層（inUpperDimension 中）のルール =====
+    const UPPER_SCORE_MULT = 1.5;        // 上層でのスコア倍率
+    const UPPER_BONUS_INTERVAL = 20;     // 滞在ボーナスの間隔（フレーム）。板に乗っていられる時間（約13〜49フレーム）に合わせて短めに設定
+    const UPPER_BONUS_BASE = 50;         // 滞在ボーナス基礎値（×combo）
+    let upperStayFrames = 0;             // 滞在ボーナス用タイマー（突入でリセット）
+    let upperBonusMsgTimer = null;
+    let obstaclesGhosted = false;        // 地上障害物を半透明表示中か（見た目のみ）
+    const OBSTACLE_GHOST_OPACITY = 0.3;
+
+    // スコア加算はすべてここを経由する。地上では amount をそのまま、上層では x1.5 を切り捨て。
+    // 戻り値は実際に加算した値（表示用）。
+    function addScore(amount) {
+        const added = inUpperDimension ? Math.floor(amount * UPPER_SCORE_MULT) : amount;
+        score += added;
+        return added;
+    }
+
     const settings = {
         easy:   { speed: 0.18, max: 0.45, obstRate: 40, itemRate: 100, coinRate: 70,  accel: 0.0001, multiSpawn: 0.20, maxMulti: 2, enemyShootInterval: 0,  maxEnemyBullets: 0, shootChance: 0.00, bulletSpeed: 0.50 },
         normal: { speed: 0.28, max: 0.70, obstRate: 28, itemRate: 180, coinRate: 100, accel: 0.0005, multiSpawn: 0.40, maxMulti: 2, enemyShootInterval: 0,  maxEnemyBullets: 0, shootChance: 0.00, bulletSpeed: 0.50 },
@@ -815,7 +840,8 @@
         } catch(e) {}
     }
 
-    function playSound(type) {
+    // level: 'step' 用の段番号（1, 2, ...）。他の type では未使用。
+    function playSound(type, level = 1) {
         if (!audioCtx) return;
         switch (type) {
             case 'shoot':
@@ -869,6 +895,13 @@
                 playTone(1200, 0.35, 0.14, 'sawtooth', 160);
                 setTimeout(() => playTone(900, 0.3, 0.1, 'sine', 140), 40);
                 break;
+            case 'step': {    // 階段着地：段が上がるほど高音（1段ごとに完全4度 = 5半音上昇）
+                const f = 392 * Math.pow(2, (Math.max(1, level) - 1) * 5 / 12);
+                playTone(150, 0.035, 0.12, 'square');          // 軽い足音
+                playTone(f, 0.09, 0.16, 'triangle');
+                setTimeout(() => playTone(f * 1.5, 0.07, 0.09, 'sine'), 45);
+                break;
+            }
         }
     }
 
@@ -1125,6 +1158,7 @@
                 isOctahedron: typeRoll >= 0.72
             };
             obs.castShadow = true;
+            applyObstacleGhost(obs, obstaclesGhosted);   // 上層滞在中のスポーンもゴースト状態を引き継ぐ
             scene.add(obs);
             obstacles.push(obs);
         }
@@ -1145,7 +1179,7 @@
         });
         const plat = new THREE.Mesh(geo, mat);
         plat.position.set(0, elevY + PH / 2, -58);
-        plat.userData = { width: PW, height: PH, depth: PD, isPlatform: true };
+        plat.userData = { width: PW, height: PH, depth: PD, isPlatform: true, kind: 'main', stepIndex: 0 };
         plat.castShadow = true;
 
         // 上面：青白い発光面
@@ -1199,6 +1233,41 @@
 
         scene.add(plat);
         platforms.push(plat);
+
+        // ===== 階段（メイン板の手前＝プレイヤー側に2段）=====
+        // メイン板と同じ platforms 配列に入れ、移動・着地・消滅は既存ループで一括処理。
+        // 全段が同速度で流れるため z オフセットは固定のまま保たれる。
+        const STEP_D = 2.8;   // 各段の奥行き
+        const STEP_H = 0.6;   // 各段の板厚
+        const steps = [
+            { idx: 1, top: 1.0, w: 6.0, base: 0x04080e, emis: 0x0068cc, topColor: 0x3aa8ff, edge: 0x2fc8ff },
+            { idx: 2, top: 2.0, w: 7.0, base: 0x040a10, emis: 0x0099dd, topColor: 0x55ddff, edge: 0x44eeff }
+        ];
+        const mainFrontZ = plat.position.z + PD / 2;   // メイン板の手前端
+        for (const s of steps) {
+            // 2段目がメイン板に接し、1段目がさらにその手前に接する
+            const z = mainFrontZ + STEP_D * (steps.length - s.idx) + STEP_D / 2;
+            const sGeo = new THREE.BoxGeometry(s.w, STEP_H, STEP_D);
+            const sMat = new THREE.MeshStandardMaterial({
+                color: s.base, emissive: s.emis, emissiveIntensity: 0.5 + 0.08 * s.idx
+            });
+            const step = new THREE.Mesh(sGeo, sMat);
+            step.position.set(0, s.top - STEP_H / 2, z);
+            step.userData = { width: s.w, height: STEP_H, depth: STEP_D, isPlatform: true, kind: 'step', stepIndex: s.idx };
+            step.castShadow = true;
+
+            const stTop = new THREE.Mesh(
+                new THREE.PlaneGeometry(s.w - 0.05, STEP_D - 0.05),
+                new THREE.MeshBasicMaterial({ color: s.topColor, transparent: true, opacity: 0.4 + 0.05 * s.idx, depthWrite: false })
+            );
+            stTop.rotation.x = -Math.PI / 2;
+            stTop.position.y = STEP_H / 2 + 0.01;
+            step.add(stTop);
+            step.add(new THREE.LineSegments(new THREE.EdgesGeometry(sGeo), new THREE.LineBasicMaterial({ color: s.edge })));
+
+            scene.add(step);
+            platforms.push(step);
+        }
 
         // ボーナスコイン5枚をプラットフォーム上に配置
         [-2.8, -1.4, 0, 1.4, 2.8].forEach(offset => {
@@ -1314,9 +1383,9 @@
 
                     const constellationBonus = constellationStage >= 3 ? 1.5 : 1;
                     const destroyScore = Math.floor(300 * combo * constellationBonus);
-                    score += destroyScore;
+                    const destroyAdded = addScore(destroyScore);
                     destroyedCount++;
-                    showMessage(`+${destroyScore.toLocaleString()} DESTROY!`, 800);
+                    showMessage(`+${destroyAdded.toLocaleString()} DESTROY!`, 800);
                     break;
                 }
             }
@@ -1330,9 +1399,9 @@
                         scene.remove(eBullet);
                         enemyBullets.splice(j, 1);
                         createExplosion(bullet.position);
-                        score += 50;
+                        const interceptAdded = addScore(50);
                         playSound('intercept');
-                        showMessage("+50 INTERCEPT!", 600);
+                        showMessage(`+${interceptAdded} INTERCEPT!`, 600);
                         break;
                     }
                 }
@@ -1359,8 +1428,8 @@
                         playSound('intercept');
                         scene.remove(bullet); enemyBullets.splice(i, 1);
                         scene.remove(debris[j].mesh); debris.splice(j, 1);
-                        score += 250;
-                        showMessage('ORBITAL DEFLECT  +250', 700);
+                        const deflectAdded = addScore(250);
+                        showMessage(`ORBITAL DEFLECT  +${deflectAdded}`, 700);
                         deflected = true;
                         break;
                     }
@@ -1510,10 +1579,10 @@
         scene.remove(nearest);
         obstacles.splice(obstacles.indexOf(nearest), 1);
         const pulseScore = Math.floor(800 * combo);
-        score += pulseScore;
+        const pulseAdded = addScore(pulseScore);
         triggerShake(0.18);
         playSound('explode');
-        showMessage(`SINGULARITY PULSE  +${pulseScore.toLocaleString()}`, 1100);
+        showMessage(`SINGULARITY PULSE  +${pulseAdded.toLocaleString()}`, 1100);
     }
 
     // デブリ数に応じて宇宙の雰囲気（背景色・霧）を動的に変化させる
@@ -1536,23 +1605,31 @@
             if (isPaused) return;                 // ポーズ中は状態を凍結
             // ゲームオーバー／タイトル: 演出なしで静かに地上へ戻す
             if (inUpperDimension) { inUpperDimension = false; setDimensionHUD(false); }
+            stopUpperRules();
             dimPrevRiding = null;
             return;
         }
-        const cur = ridingBlock;
+        // 次元シフトの対象はメイン板のみ。ステップ上は「地上扱い」で突入しない。
+        const cur = isMainPlatform(ridingBlock) ? ridingBlock : null;
         if (cur) {
-            dimLastRideY = cur.position.y + cur.userData.height / 2 + 0.4;
-            // null→非null：突入（既に上層にいる＝同じ板への再着地や板の乗り継ぎでは再発火しない）
-            if (!dimPrevRiding && !inUpperDimension) enterUpperDimension();
+            dimLastRideY = cur.position.y + cur.userData.height / 2 + 0.4;   // 帰還判定はメイン板基準
+            // 非メイン→メイン：突入（既に上層にいる＝同じ板への再着地や板の乗り継ぎでは再発火しない）
+            if (!isMainPlatform(dimPrevRiding) && !inUpperDimension) enterUpperDimension();
         } else if (inUpperDimension && player.position.y < dimLastRideY - DIM_EXIT_DROP) {
             // 非null→null の後、板の高さから明確に落ちた時点で帰還を1回だけ確定
             exitUpperDimension();
         }
-        dimPrevRiding = cur;
+        dimPrevRiding = ridingBlock;
+    }
+
+    function isMainPlatform(p) {
+        return !!(p && p.userData && p.userData.kind === 'main');
     }
 
     function enterUpperDimension() {
         inUpperDimension = true;
+        upperStayFrames = 0;          // 滞在ボーナスのタイマーは突入でリセット
+        setObstaclesGhost(true);
         // 着地直前の「PLATFORM! +200」を上書きしないよう、メッセージだけ少し遅らせる
         setTimeout(() => { if (inUpperDimension) showMessage('DIMENSION SHIFT', 1100); }, 550);
         triggerDimensionFlash();
@@ -1563,6 +1640,7 @@
 
     function exitUpperDimension() {
         inUpperDimension = false;
+        stopUpperRules();
         playSound('warp-out');
         setDimensionHUD(false);
     }
@@ -1573,7 +1651,42 @@
         inUpperDimension = false;
         dimBlend = 0;
         dimFovKick = 0;
+        stopUpperRules();
         setDimensionHUD(false);
+    }
+
+    // 上層ルールの停止（帰還・リセット・ゲームオーバー共通）：滞在タイマー停止＋障害物を元の見た目へ
+    function stopUpperRules() {
+        upperStayFrames = 0;
+        setObstaclesGhost(false);
+    }
+
+    // 地上障害物のゴースト化（見た目のみ。当たり判定は一切変えない）
+    // 障害物のマテリアルは spawnObstacle で1体ずつ new されている（個別）ため、全体へ適用する。
+    function applyObstacleGhost(obs, on) {
+        const m = obs.material;
+        if (!m) return;
+        if (m.transparent === on && m.opacity === (on ? OBSTACLE_GHOST_OPACITY : 1)) return;
+        m.transparent = on;
+        m.opacity = on ? OBSTACLE_GHOST_OPACITY : 1;
+        m.depthWrite = !on;           // 半透明同士・背後の板が欠けないよう深度書き込みを止める
+        m.needsUpdate = true;
+        obs.castShadow = !on;         // ゴースト中は影も落とさない
+    }
+
+    function setObstaclesGhost(on) {
+        if (obstaclesGhosted === on) return;
+        obstaclesGhosted = on;
+        for (const obs of obstacles) applyObstacleGhost(obs, on);
+    }
+
+    function showUpperBonus(n) {
+        const el = document.getElementById('upper-bonus-msg');
+        if (!el) return;
+        el.textContent = `UPPER BONUS +${n.toLocaleString()}`;
+        el.style.opacity = '1';
+        clearTimeout(upperBonusMsgTimer);
+        upperBonusMsgTimer = setTimeout(() => { el.style.opacity = '0'; }, 700);
     }
 
     function setDimensionHUD(on) {
@@ -1773,9 +1886,9 @@
                 const nearMissDist = Math.max(0.9, 0.3 + w * 0.8 + 0.25);
                 if (dx < nearMissDist) {
                     const bonus = 50 * combo;
-                    score += bonus;
+                    const nearAdded = addScore(bonus);
                     playSound('nearmiss');
-                    showNearMiss(bonus);
+                    showNearMiss(nearAdded);
                 }
             }
 
@@ -1783,7 +1896,7 @@
                 scene.remove(obs);
                 obstacles.splice(i, 1);
                 const finalScore = 100 * combo * (activeBoost ? 2 : 1);
-                score += finalScore;
+                addScore(finalScore);
             }
         }
 
@@ -1802,8 +1915,8 @@
                 playSound('coin');
                 scene.remove(coin);
                 coins.splice(i, 1);
-                score += 200 * combo;
-                showMessage("+" + (200 * combo).toLocaleString(), 800);
+                const coinAdded = addScore(200 * combo);
+                showMessage("+" + coinAdded.toLocaleString(), 800);
             } else if (coin.position.z > 6) {
                 scene.remove(coin);
                 coins.splice(i, 1);
@@ -1842,26 +1955,41 @@
             const pBottom  = player.position.y - 0.4;
             const prevPBottom = prevPlayerY - 0.4;
 
-            // 上面着地判定：PD=12 の奥行きを活かして pdz < 7.0 で広いウィンドウ
+            // 上面着地判定：奥行き依存のウィンドウ（メイン板 depth 12 → 7.0 で従来どおり、ステップ depth 2.8 → 2.4）
+            const pdzWindow = plat.userData.depth / 2 + 1.0;
             if (plat !== ridingBlock
                 && velocityY <= 0.05
                 && prevPBottom >= platTopY - 0.5
                 && pBottom    <= platTopY + 0.4
                 && pdx < pw + 0.3
-                && pdz < 7.0) {
+                && pdz < pdzWindow) {
                 ridingBlock = plat;
                 player.position.y = platTopY + 0.4;
                 velocityY = 0;
                 isJumping = false;
-                playSound('land');
-                showMessage('PLATFORM! +200', 900);
-                score += 200 * combo;
+                if (plat.userData.kind === 'step') {
+                    // ステップ：スコアなし、段に応じて音程が上がる着地音のみ
+                    playSound('step', plat.userData.stepIndex);
+                } else {
+                    playSound('land');
+                    showMessage('PLATFORM! +200', 900);
+                    addScore(200 * combo);
+                }
             }
 
             if (plat.position.z > 10) {
                 scene.remove(plat);
                 platforms.splice(i, 1);
                 if (ridingBlock === plat) ridingBlock = null;
+            }
+        }
+
+        // ===== 上層の滞在ボーナス：滞在1秒ごとに +50×combo（addScore 経由なので x1.5 適用）=====
+        if (inUpperDimension) {
+            upperStayFrames++;
+            if (upperStayFrames >= UPPER_BONUS_INTERVAL) {
+                upperStayFrames = 0;
+                showUpperBonus(addScore(UPPER_BONUS_BASE * combo));
             }
         }
 
@@ -1883,8 +2011,8 @@
                 scene.remove(bc);
                 bonusCoins.splice(i, 1);
                 const bonusVal = 800 * combo;
-                score += bonusVal;
-                showMessage(`RED BONUS +${bonusVal.toLocaleString()}`, 1100);
+                const redAdded = addScore(bonusVal);
+                showMessage(`RED BONUS +${redAdded.toLocaleString()}`, 1100);
             } else if (bc.position.z > 10) {
                 scene.remove(bc);
                 bonusCoins.splice(i, 1);
