@@ -173,6 +173,24 @@
             display: flex; align-items: center; justify-content: center;
             height: clamp(36px, 8vw, 44px); font-size: clamp(20px, 4vw, 24px);
         }
+        /* ===== インラインSVGアイコン（単色ストローク / currentColor） ===== */
+        .ico {
+            width: 1.15em; height: 1.15em; flex: 0 0 auto;
+            fill: none; stroke: currentColor; stroke-width: 2;
+            stroke-linecap: round; stroke-linejoin: round;
+            vertical-align: -0.2em;
+        }
+        .powerup-slot-inner .ico { width: 1.1em; height: 1.1em; filter: drop-shadow(0 0 4px currentColor); }
+        #powerup-shield .powerup-slot-inner { color: #00aaff; }
+        #powerup-boost  .powerup-slot-inner { color: #ffff00; }
+        #powerup-slow   .powerup-slot-inner { color: #00ff88; }
+        #cooldown-label .ico { margin-right: 4px; }
+        .howto-items .ico { margin-right: 3px; }
+        .ico-coin   { color: #ffcc33; }
+        .ico-shield { color: #00aaff; }
+        .ico-boost  { color: #ffff00; }
+        .ico-slow   { color: #00ff88; }
+        .ico-pause  { fill: currentColor; stroke: none; }
         .timer-track {
             height: 5px; background: rgba(255,255,255,0.15);
             margin: 0 4px 4px;
@@ -344,6 +362,7 @@
             color: #ffe14d; font-weight: bold; font-size: 16px; margin: 6px 0 0;
             text-shadow: 0 0 10px rgba(255,225,77,0.5);
         }
+        .new-record .ico { margin-right: 6px; filter: drop-shadow(0 0 4px rgba(255,225,77,0.6)); }
         .result-grid {
             display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
             margin: 16px 0 0; text-align: left;
@@ -482,7 +501,7 @@
     </div>
 
     <div id="cooldown-container" class="hidden">
-        <div id="cooldown-label">🔫 WEAPON</div>
+        <div id="cooldown-label"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>WEAPON</div>
         <div id="cooldown-bar-bg">
             <div id="cooldown-bar"></div>
         </div>
@@ -497,14 +516,14 @@
 
     <div id="powerups">
         <div id="powerup-shield" class="powerup-slot hidden" style="border-color:#00aaff;" aria-label="シールド有効">
-            <div class="powerup-slot-inner">🛡️</div>
+            <div class="powerup-slot-inner"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10v-6z"/></svg></div>
         </div>
         <div id="powerup-boost" class="powerup-slot hidden" style="border-color:#ffff00;" aria-label="ブースト有効">
-            <div class="powerup-slot-inner">⚡</div>
+            <div class="powerup-slot-inner"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2L5 13.5h6L10 22l9-12h-6.5z"/></svg></div>
             <div class="timer-track"><div id="boost-timer-bar" class="timer-fill boost-fill"></div></div>
         </div>
         <div id="powerup-slow" class="powerup-slot hidden" style="border-color:#00ff88;" aria-label="スローモー有効">
-            <div class="powerup-slot-inner">🕐</div>
+            <div class="powerup-slot-inner"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
             <div class="timer-track"><div id="slow-timer-bar" class="timer-fill slow-fill"></div></div>
         </div>
     </div>
@@ -526,26 +545,26 @@
                 </p>
                 <div class="howto-cols">
                     <div>
-                        <div class="howto-sub">⌨ キーボード / マウス</div>
+                        <div class="howto-sub">キーボード / マウス</div>
                         <ul class="keys">
                             <li><span class="k"><kbd>A</kbd><kbd>D</kbd> / <kbd>←</kbd><kbd>→</kbd></span>左右に移動</li>
                             <li><span class="k"><kbd>SPACE</kbd></span>ジャンプ</li>
                             <li><span class="k"><kbd>W</kbd> / <kbd>↑</kbd> / クリック</span>射撃</li>
-                            <li><span class="k"><kbd>ESC</kbd> / ⏸</span>ポーズ</li>
+                            <li><span class="k"><kbd>ESC</kbd> / <svg class="ico ico-pause" viewBox="0 0 24 24" role="img" aria-label="ポーズボタン"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></span>ポーズ</li>
                         </ul>
                     </div>
                     <div>
-                        <div class="howto-sub">📱 タッチ</div>
+                        <div class="howto-sub">タッチ</div>
                         <ul class="keys">
                             <li><span class="k">左右にスワイプ</span>移動（指を置いたまま）</li>
                             <li><span class="k">上にフリック</span>ジャンプ</li>
                             <li><span class="k">タップ</span>射撃</li>
-                            <li><span class="k">右上の ⏸</span>ポーズ</li>
+                            <li><span class="k">右上の <svg class="ico ico-pause" viewBox="0 0 24 24" role="img" aria-label="ポーズボタン"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></span>ポーズ</li>
                         </ul>
                     </div>
                 </div>
                 <p class="howto-items">
-                    <span>🪙 コイン: +200×倍率</span><span>🛡️ シールド: 1回防御</span><span>⚡ ブースト: 回避点x2</span><span>🕐 スロー: 減速</span>
+                    <span><svg class="ico ico-coin" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.5"/></svg>コイン: +200×倍率</span><span><svg class="ico ico-shield" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10v-6z"/></svg>シールド: 1回防御</span><span><svg class="ico ico-boost" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2L5 13.5h6L10 22l9-12h-6.5z"/></svg>ブースト: 回避点x2</span><span><svg class="ico ico-slow" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>スロー: 減速</span>
                 </p>
             </section>
 
@@ -604,7 +623,7 @@
 
         <div id="gameover-screen" class="hidden" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
             <h1 class="gameover-title" id="gameover-title">SINGULARITY<br>INTERRUPTED</h1>
-            <p id="new-record-msg" class="new-record" style="display:none;" role="status">🏆 NEW HIGH SCORE!</p>
+            <p id="new-record-msg" class="new-record" style="display:none;" role="status"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5"/><path d="M12 14v4M8 21h8M9.5 18h5"/></svg>NEW HIGH SCORE!</p>
             <div class="result-grid">
                 <div class="result-item is-main">
                     <span class="result-label">ENERGY</span>
@@ -1253,7 +1272,7 @@
                         scene.remove(bullet); enemyBullets.splice(i, 1);
                         scene.remove(debris[j].mesh); debris.splice(j, 1);
                         score += 250;
-                        showMessage('⚡ ORBITAL DEFLECT  +250', 700);
+                        showMessage('ORBITAL DEFLECT  +250', 700);
                         deflected = true;
                         break;
                     }
@@ -1270,7 +1289,7 @@
                     enemyBullets.splice(i, 1);
                     combo = 1; consecutiveAvoid = 0; updateHUD();
                     playSound('shield'); triggerShake(0.2); triggerDamageFlash();
-                    showMessage("🛡️ SHIELD!", 800);
+                    showMessage("SHIELD!", 800);
                 } else {
                     playSound('hit'); triggerShake(0.6); triggerDamageFlash();
                     gameOver();
@@ -1374,8 +1393,8 @@
         prevConstellationStage = stage;
         constellationStage = stage;
         const msgs = [
-            '', '🌌 ORBIT FORMING', '⚡ DEFLECTOR ACTIVE',
-            '✨ CONSTELLATION COMPLETE', '⚫ SINGULARITY FORMING...'
+            '', 'ORBIT FORMING', 'DEFLECTOR ACTIVE',
+            'CONSTELLATION COMPLETE', 'SINGULARITY FORMING...'
         ];
         if (stage > 0) {
             showMessage(msgs[stage], 2200);
@@ -1406,7 +1425,7 @@
         score += pulseScore;
         triggerShake(0.18);
         playSound('explode');
-        showMessage(`⚫ SINGULARITY PULSE  +${pulseScore.toLocaleString()}`, 1100);
+        showMessage(`SINGULARITY PULSE  +${pulseScore.toLocaleString()}`, 1100);
     }
 
     // デブリ数に応じて宇宙の雰囲気（背景色・霧）を動的に変化させる
@@ -1536,7 +1555,7 @@
                     obstacles.splice(i, 1);
                     combo = 1; consecutiveAvoid = 0; updateHUD();
                     playSound('shield'); triggerShake(0.25); triggerDamageFlash();
-                    showMessage("🛡️ SHIELD SAVED!", 1000);
+                    showMessage("SHIELD SAVED!", 1000);
                 } else {
                     playSound('hit'); triggerShake(0.6); triggerDamageFlash();
                     gameOver();
@@ -1669,7 +1688,7 @@
                 bonusCoins.splice(i, 1);
                 const bonusVal = 800 * combo;
                 score += bonusVal;
-                showMessage(`🔴 BONUS +${bonusVal.toLocaleString()}`, 1100);
+                showMessage(`RED BONUS +${bonusVal.toLocaleString()}`, 1100);
             } else if (bc.position.z > 10) {
                 scene.remove(bc);
                 bonusCoins.splice(i, 1);
@@ -1728,15 +1747,15 @@
         playSound('powerup');
         if (type === 'shield') {
             activeShield = true;
-            showMessage("🛡️ SHIELD!", 1500);
+            showMessage("[SHIELD] 1回防御", 1500);
         } else if (type === 'boost') {
             activeBoost = true;
             boostTimer = 300;
-            showMessage("⚡ BOOST x2!", 1500);
+            showMessage("[BOOST] 回避点 x2!", 1500);
         } else if (type === 'slow') {
             activeSlow = true;
             slowTimer = 300;
-            showMessage("🕐 SLOW-MO!", 1500);
+            showMessage("[SLOW] SLOW-MO!", 1500);
         }
         updatePowerupUI();
     }
@@ -1747,7 +1766,7 @@
         document.getElementById('powerup-slow').classList.toggle('hidden', !activeSlow);
     }
 
-    const STAGE_NAMES = ['—', 'ORBIT', 'DEFLECTOR', 'CONSTELLATION', '⚫ SINGULARITY'];
+    const STAGE_NAMES = ['—', 'ORBIT', 'DEFLECTOR', 'CONSTELLATION', 'SINGULARITY'];
     const STAGE_CLASSES = ['', 'stage-1', 'stage-2', 'stage-3', 'stage-4'];
 
     function updateConstellationHUD() {
