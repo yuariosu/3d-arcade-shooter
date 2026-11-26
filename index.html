@@ -755,6 +755,11 @@
     let ridingBlock = null;   // 乗っているブロック（null=地面 or 空中）
     let prevPlayerY = 0.5;    // 前フレームのプレイヤーY（着地判定用）
     const GRAVITY = 0.025, JUMP_FORCE = 0.5, PLAYER_Y = 0.5;
+    const JUMP_BUFFER_FRAMES = 8;   // 先行入力: ジャンプ不可の間に押された入力を、このフレーム数以内にジャンプ可能になれば自動実行
+    const COYOTE_FRAMES = 6;        // コヨーテタイム: 接地（地面 or 板の上）を離れてから、このフレーム数以内はジャンプ可能
+    let jumpFrame = 0;              // ジャンプ判定用フレームカウンタ（プレイ中の update() でのみ進む＝ポーズ中は止まる）
+    let jumpBufferedFrame = -1;     // 先行入力を受けたフレーム（-1=記録なし）
+    let lastGroundedFrame = -1;     // 最後に接地していたフレーム（-1=無効。ジャンプ実行で無効化し二段ジャンプを防ぐ）
     const keys = { left: false, right: false };
 
     let shakeAmount = 0;
@@ -1042,6 +1047,7 @@
         player.rotation.set(0,0,0);
         velocityX = 0; velocityY = 0; isJumping = false;
         ridingBlock = null; prevPlayerY = PLAYER_Y;
+        resetJumpAssist();
 
         obstacles.forEach(o => scene.remove(o));
         coins.forEach(c => scene.remove(c));
@@ -1103,6 +1109,7 @@
         platforms = []; bonusCoins = []; platformSpawnTimer = 0;
         constellationStage = 0; prevConstellationStage = -1; singularityTimer = 0;
         ridingBlock = null;
+        resetJumpAssist();
         resetDimensionState();
         scene.background.setHex(0x050505);
         if (scene.fog) scene.fog.color.setHex(0x050505);
@@ -1821,6 +1828,14 @@
 
         if (!isGameRunning) return;
 
+        // ジャンプ先行入力の消化：前フレーム末の状態でジャンプ可能になっていれば実行
+        // （物理更新の前に行うので、次元シフト監視は着地フレームの ridingBlock を必ず観測できる）
+        jumpFrame++;
+        if (jumpBufferedFrame >= 0) {
+            if (jumpFrame - jumpBufferedFrame > JUMP_BUFFER_FRAMES) jumpBufferedFrame = -1;   // 古い入力は破棄
+            else if (canJumpNow()) { jumpBufferedFrame = -1; performJump(); }
+        }
+
         const cfg = settings[difficulty];
         const effectiveSpeed = activeSlow ? gameSpeed * 0.5 : gameSpeed;
 
@@ -1854,6 +1869,7 @@
             player.position.y = ridingBlock.position.y + rH + 0.4;
             velocityY = 0;
             isJumping = false;
+            lastGroundedFrame = jumpFrame;
         } else {
             velocityY -= GRAVITY;
             player.position.y += velocityY;
@@ -1861,6 +1877,7 @@
                 player.position.y = PLAYER_Y;
                 velocityY = 0;
                 isJumping = false;
+                lastGroundedFrame = jumpFrame;
             }
         }
         player.rotation.x -= effectiveSpeed;
@@ -2015,6 +2032,7 @@
                 player.position.y = platTopY + 0.4;
                 velocityY = 0;
                 isJumping = false;
+                lastGroundedFrame = jumpFrame;
                 if (plat.userData.kind === 'step') {
                     // ステップ：スコアなし、段に応じて音程が上がる着地音のみ
                     playSound('step', plat.userData.stepIndex);
@@ -2247,6 +2265,7 @@
         isGameRunning = false;
         resetShootFeel();
         ridingBlock = null;
+        resetJumpAssist();
         document.getElementById('menu').classList.remove('hidden');
         document.getElementById('gameover-screen').classList.remove('hidden');
         document.getElementById('controls-hint').classList.add('hidden');
@@ -2262,6 +2281,43 @@
         const recMsg = document.getElementById('new-record-msg');
         recMsg.style.display = isNewRecord ? 'block' : 'none';
         updateStartScreenHighScores();
+    }
+
+    // ===== ジャンプ入力（先行入力 + コヨーテタイム）=====
+    // ジャンプ可否：
+    //  - !isJumping … 従来の条件。板が流れ去って落下を始めた場合は isJumping が false のまま
+    //    なので、従来どおり落下中もジャンプできる（この寛容さは維持する）。
+    //  - コヨーテ … 最後の接地から COYOTE_FRAMES 以内。ジャンプ実行で無効化されるため
+    //    二段ジャンプにはならない。将来、落下開始時に isJumping を立てる変更が入っても
+    //    「離れた直後に跳べる」感覚をここで保証する。
+    function canJumpNow() {
+        if (!isJumping) return true;
+        return lastGroundedFrame >= 0 && jumpFrame - lastGroundedFrame <= COYOTE_FRAMES;
+    }
+
+    // 実際のジャンプ処理（従来と同一）
+    function performJump() {
+        ridingBlock = null;   // ブロックから離脱
+        velocityY = JUMP_FORCE;
+        isJumping = true;
+        lastGroundedFrame = -1;   // コヨーテ消費（二段ジャンプ防止）
+        playSound('jump');
+    }
+
+    // ジャンプ入力の唯一の入口（Space / タッチ上フリック）
+    function requestJump() {
+        if (!isGameRunning || isPaused) return;   // 未開始・ポーズ中・ゲームオーバーではバッファしない
+        if (canJumpNow()) {
+            jumpBufferedFrame = -1;
+            performJump();
+        } else {
+            jumpBufferedFrame = jumpFrame;        // 先行入力として記録（最新の入力で上書き）
+        }
+    }
+
+    function resetJumpAssist() {
+        jumpBufferedFrame = -1;
+        lastGroundedFrame = -1;
     }
 
     function onKeyDown(e) {
@@ -2280,12 +2336,8 @@
             }
         }
         if (e.code === 'Space') {
-            if (!isJumping && isGameRunning) {
-                ridingBlock = null;   // ブロックから離脱
-                velocityY = JUMP_FORCE;
-                isJumping = true;
-                playSound('jump');
-            }
+            requestJump();
+            // ゲームオーバー画面からの再開は従来どおり即時（バッファを経由しない）
             if (!isGameRunning && !document.getElementById('gameover-screen').classList.contains('hidden')) {
                 startGame();
             }
@@ -2350,12 +2402,10 @@
             // ジャンプ：「前フレームから上に急に動いた」フリック検出
             // - lastY との差(frameDy)を使うことで、上下往復しても多重発火しない
             const frameDy = y - lastY;
-            if (frameDy < -18 && !isJumping && !jumpLocked && isGameRunning) {
-                ridingBlock = null;   // ブロックから離脱
-                velocityY = JUMP_FORCE;
-                isJumping = true;
+            // （空中でのフリックは先行入力として記録され、着地後に自動ジャンプする）
+            if (frameDy < -18 && !jumpLocked && isGameRunning) {
+                requestJump();
                 jumpLocked = true; // 指が下に戻るまでロック
-                playSound('jump');
             }
             // 指が下方向に動いたらロック解除（次の上フリックでジャンプ可能）
             if (frameDy > 12) jumpLocked = false;
